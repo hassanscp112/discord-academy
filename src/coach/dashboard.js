@@ -80,8 +80,13 @@ export async function refreshDashboard(client, { force = false } = {}) {
       await cachedMessage.edit({ embeds: [buildDashboardEmbed()] });
       return;
     }
-    const pins = await ch.messages.fetchPins();
-    const existing = [...pins.values()].find(m => m.embeds?.some(e => e.footer?.text?.startsWith(MARK)))
+    // fetchPins returns { items } in newer discord.js, a Collection in older ones
+    let pinnedArr = [];
+    try {
+      const pins = await ch.messages.fetchPins();
+      pinnedArr = Array.isArray(pins?.items) ? pins.items : (typeof pins?.values === 'function' ? [...pins.values()] : []);
+    } catch { /* fall through to recent-message scan */ }
+    const existing = pinnedArr.find(m => m.embeds?.some(e => e.footer?.text?.startsWith(MARK)))
       ?? [...(await ch.messages.fetch({ limit: 50 })).values()].find(m => m.author?.bot && m.embeds?.some(e => e.footer?.text?.startsWith(MARK)));
     if (existing) {
       cachedMessage = existing;

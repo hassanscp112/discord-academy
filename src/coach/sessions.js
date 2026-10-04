@@ -9,6 +9,7 @@ import { config } from '../core/config.js';
 import { templates } from '../core/templates.js';
 import { refreshDashboard, markDashboardDirty } from './dashboard.js';
 import { announceLevelUp } from './gamification.js';
+import { startStream, stopStream, prefetch } from './streamer.js';
 
 const run = (sql, ...p) => getDb().prepare(sql).run(...p);
 const fill = (text, vars) => text.replace(/\{\{(\w+)\}\}/g, (_, k) => vars?.[k] ?? '');
@@ -49,7 +50,7 @@ async function autoQuest(bus) {
     description: "Finish this week's lessons and claim the reward!",
     lessonIds, startsAt: new Date().toISOString(), endsAt: ends, auto: true,
   });
-  run('UPDATE settings SET value = ? WHERE key = ?', weekKey, 'quest_week');
+  run('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', 'quest_week', weekKey);
   await bus.postTo('channel_dashboard', {
     content: fill(templates.quest_new, {
       title: titles.join(' + '), xp: getSetting('xp_quest', '150'), ends: fmtInTz(new Date(ends), config.tz),
@@ -84,14 +85,15 @@ export async function tick({ client = null, bus, now = new Date() } = {}) {
       when: fmtInTz(t, config.tz), ping: pingTag(), vc_name: 'study-room',
     };
 
-    // T-remMin: reminder
+    // T-remMin: reminder + warm the audio cache for class time
     if (s.status === 'scheduled' && now >= t.getTime() - remMin * 60000 && now < t) {
+      prefetch(s.lesson_id, lesson.url);
       await bus.postTo('channel_dashboard', { content: fill(templates.reminder, { ...vars, when: humanDuration(t - now) }) });
       run("UPDATE sessions SET status = 'reminded' WHERE id = ?", s.id);
       continue;
     }
 
-    // T-0: starting
+    // T-0: starting — the Coach joins the study VC and plays the lesson
     if ((s.status === 'scheduled' || s.status === 'reminded') && now >= t) {
       const msg = await bus.postTo('channel_dashboard', {
         content: fill(templates.starting, vars),
@@ -100,6 +102,7 @@ export async function tick({ client = null, bus, now = new Date() } = {}) {
         )],
       });
       run("UPDATE sessions SET status = 'live', live_post_id = ? WHERE id = ?", msg?.id ?? '', s.id);
+      if (lesson.url) startStream(client, s.lesson_id, lesson.url);
       continue;
     }
 
@@ -111,6 +114,7 @@ export async function tick({ client = null, bus, now = new Date() } = {}) {
         continue;
       }
       if (att.length === 0 && now >= t.getTime() + missMin * 60000 && !s.proposed_at) {
+        stopStream();
         const slot = proposeSlot(t);
         run("UPDATE sessions SET status = 'missed_poll', proposed_at = ?, poll_at = ? WHERE id = ?",
           slot.toISOString(), now.toISOString(), s.id);
@@ -141,6 +145,7 @@ export async function tick({ client = null, bus, now = new Date() } = {}) {
 }
 
 export async function finishSession({ client, bus, sessionId }) {
+  stopStream();
   const res = A.finalizeSession(sessionId);
   if (!res) return null;
   const lesson = A.getLesson(res.session.lesson_id);

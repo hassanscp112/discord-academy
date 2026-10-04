@@ -8,6 +8,7 @@ import { fmtInTz, zonedToUtc } from '../core/time.js';
 import { config } from '../core/config.js';
 import { applyPublish, currentRevision } from './publish.js';
 import { refreshDashboard, markDashboardDirty } from './dashboard.js';
+import { stopStream } from './streamer.js';
 
 const dashCookie = () => createHash('sha256').update(`academy:${config.dashPassword}`).digest('hex').slice(0, 32);
 
@@ -179,7 +180,7 @@ export function startWeb({ client = null, bus }) {
     res.redirect('/schedule');
   });
   app.post('/schedule/session/cancel', (req, res) => {
-    A.cancelSession(Number(req.body.id)); markDashboardDirty(); res.redirect('/schedule');
+    A.cancelSession(Number(req.body.id)); stopStream(); markDashboardDirty(); res.redirect('/schedule');
   });
 
   app.get('/members', (_req, res) => {

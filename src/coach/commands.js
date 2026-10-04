@@ -9,6 +9,7 @@ import { zonedToUtc, fmtInTz } from '../core/time.js';
 import { config } from '../core/config.js';
 import { templates } from '../core/templates.js';
 import { finishSession, proposeSlot } from './sessions.js';
+import { stopStream } from './streamer.js';
 import { announceLevelUp } from './gamification.js';
 import { refreshDashboard, markDashboardDirty } from './dashboard.js';
 
@@ -306,6 +307,7 @@ export async function handleButton(interaction) {
     if (action === 'skip') {
       if (!boss) return interaction.reply({ content: 'Only the academy owner can do that.', ephemeral: true });
       A.cancelSession(id);
+      stopStream();
       markDashboardDirty();
       return interaction.update({ content: `⏭️ Skipped **${lesson.title}** — it stays in the course list.`, components: [] });
     }
