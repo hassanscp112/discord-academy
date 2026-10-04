@@ -13,6 +13,10 @@ import * as A from '../core/academy.js';
 
 const log = (...a) => console.log('[coach]', new Date().toISOString(), ...a);
 
+// A 24/7 bot must survive network blips and stray errors — log loudly, keep running.
+process.on('uncaughtException', e => log('uncaughtException:', e?.stack ?? e));
+process.on('unhandledRejection', e => log('unhandledRejection:', e?.stack ?? e));
+
 if (!validateCoachConfig(log)) process.exit(1);
 
 getDb();

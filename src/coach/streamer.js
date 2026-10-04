@@ -71,12 +71,13 @@ export function startStream(client, lessonId, url) {
   const guild = client?.guilds?.cache?.get(config.guildId);
   if (!vcId || !guild) return false;
 
-  joinVoiceChannel({
+  const connection = joinVoiceChannel({
     channelId: vcId,
     guildId: config.guildId,
     adapterCreator: guild.voiceAdapterCreator,
     selfDeaf: true,
   });
+  swallow(connection); // voice websocket/udp blips must never crash the academy
 
   player = createAudioPlayer({ behaviors: { noSubscriber: NoSubscriberBehavior.keepPlaying } });
 
