@@ -191,7 +191,8 @@ async function start({ url, lessonId = 0, channelId, guildId }) {
     const shard = bot.shards.get(0);
     shard.sendWS(4, { guild_id: guildId || GUILD_ID, channel_id: channelId, self_mute: false, self_deaf: true, self_video: true });
 
-    // announce the screenshare stream so clients render it
+    // announce the screenshare: op12 Video publish (the real signal) + op5 legacy form
+    conn.publishVideo?.();
     conn.announceScreenshare?.();
 
     // input pacing: realtime for VOD, low-latency passthrough for live
@@ -239,7 +240,7 @@ async function start({ url, lessonId = 0, channelId, guildId }) {
 
     state.active = true;
     state.lessonId = lessonId;
-    setTimeout(() => { try { state.conn?.announceScreenshare?.(); } catch {} }, 1500); // re-announce after DAVE settles
+    setTimeout(() => { try { state.conn?.publishVideo?.(); state.conn?.announceScreenshare?.(); } catch {} }, 1500); // re-announce after DAVE settles
     log("STREAMING video+audio");
 }
 

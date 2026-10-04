@@ -298,6 +298,8 @@ class VoiceConnection extends EventEmitter {
                 this.#closeUDP(); // Closing UDP if still open during reconnect
                 this.sendWS(VoiceOPCodes.IDENTIFY, {
                     max_dave_protocol_version: this.daveEnabled ? Davey?.DAVE_PROTOCOL_VERSION ?? 0 : 0,
+                            video: this.videoEnabled,
+                            streams: [{ type: "video", rid: "100", quality: 100 }],
                     server_id: this.id,
                     user_id: data.user_id,
                     session_id: data.session_id,
@@ -392,6 +394,11 @@ class VoiceConnection extends EventEmitter {
                 case VoiceOPCodes.READY: {
                     this.ssrc = packet.d.ssrc;
                     this.videoSSRC = packet.d.video_ssrc ?? (packet.d.ssrc + 1);
+                    const vstream = (packet.d.streams ?? []).find(x => x.type === "video");
+                    if (vstream) {
+                        if (vstream.ssrc) this.videoSSRC = vstream.ssrc;
+                        this.rtxSSRC = vstream.rtx_ssrc ?? (this.videoSSRC + 1);
+                    } else { this.rtxSSRC = this.videoSSRC + 1; }
                     this.sendHeader.writeUInt32BE(this.ssrc, 8);
 
                     const availableMode = SUPPORTED_ENCRYPTION_MODES.find((mode) => packet.d.modes.includes(mode) && (mode === "aead_aes256_gcm_rtpsize" ? aes256Available : true));
@@ -1304,6 +1311,26 @@ class VoiceConnection extends EventEmitter {
                 rtx_ssrc: this.videoSSRC + 1,
                 active: true,
                 quality: 100,
+                max_bitrate: opts.maxBitrate ?? 2500000,
+                max_framerate: opts.maxFramerate ?? 30,
+                max_resolution: { type: "fixed", width: opts.width ?? 1280, height: opts.height ?? 720 },
+            }],
+        });
+    }
+
+    // --- fork addition: op 12 Video — publish the video stream (per RE docs) ---
+    publishVideo(opts = {}) {
+        this.sendWS(12, {
+            audio_ssrc: this.ssrc,
+            video_ssrc: this.videoSSRC,
+            rtx_ssrc: this.rtxSSRC ?? (this.videoSSRC + 1),
+            streams: [{
+                type: "video",
+                rid: "100",
+                ssrc: this.videoSSRC,
+                active: true,
+                quality: 100,
+                rtx_ssrc: this.rtxSSRC ?? (this.videoSSRC + 1),
                 max_bitrate: opts.maxBitrate ?? 2500000,
                 max_framerate: opts.maxFramerate ?? 30,
                 max_resolution: { type: "fixed", width: opts.width ?? 1280, height: opts.height ?? 720 },
