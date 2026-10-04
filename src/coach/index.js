@@ -82,6 +82,7 @@ if (client) {
 }
 
 startWeb({ client, bus });
+if (client) await client.login(config.coachToken);
 await tick({ client, bus }).catch(e => log('initial tick:', e.message)); // catch-up on boot
 setInterval(() => tick({ client, bus }).catch(e => log('tick:', e.message)), 20000);
 startEngines({ client, bus });
