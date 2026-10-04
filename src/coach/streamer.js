@@ -8,6 +8,7 @@ import { getSetting } from '../core/db.js';
 import { config } from '../core/config.js';
 
 const YTDLP = process.env.YTDLP_PATH ?? 'tools/yt-dlp.exe';
+const VIDEOBOT = process.env.VIDEOBOT_URL ?? 'http://127.0.0.1:8422';
 const CACHE_DIR = 'data/cache';
 const prefetching = new Set();
 let player = null;
@@ -65,8 +66,23 @@ export function isStreaming() {
 }
 
 export function startStream(client, lessonId, url) {
-  if (!url) return false;
+  if (!url) return Promise.resolve(false);
   stopStream();
+  // preferred path: the video sidecar pushes REAL video+audio into the VC
+  return fetch(`${VIDEOBOT}/start`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ url, lessonId, channelId: getSetting('study_vc'), guildId: config.guildId }),
+    signal: AbortSignal.timeout(8000),
+  })
+    .then(r => (r.ok ? (console.log('[streamer] video sidecar streaming lesson', lessonId), true) : Promise.reject(new Error('sidecar ' + r.status))))
+    .catch(e => {
+      console.log('[streamer] video sidecar unavailable (' + e.message + ') — falling back to audio-only');
+      return startAudioOnly(client, lessonId, url);
+    });
+}
+
+function startAudioOnly(client, lessonId, url) {
   const vcId = getSetting('study_vc');
   const guild = client?.guilds?.cache?.get(config.guildId);
   if (!vcId || !guild) return false;
@@ -116,6 +132,7 @@ export function startStream(client, lessonId, url) {
 
 export function stopStream() {
   killProcs();
+  fetch(`${VIDEOBOT}/stop`, { method: 'POST', signal: AbortSignal.timeout(3000) }).catch(() => {});
   if (player) { try { player.stop(); } catch {} }
   player = null;
   const conn = getVoiceConnection(config.guildId);

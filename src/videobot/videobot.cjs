@@ -158,7 +158,19 @@ async function start({ url, lessonId = 0, channelId, guildId }) {
     const file = await downloadVideo(lessonId, url);
     log("video file ready:", file);
 
-    const conn = await bot.joinVoiceChannel(channelId, { selfDeaf: true, selfVideo: false });
+    // settle after any previous disconnect — Discord drops racy voice state updates
+    await sleep(1800);
+    let conn = null;
+    for (let attempt = 1; attempt <= 3 && !conn; attempt++) {
+        try {
+            conn = await bot.joinVoiceChannel(channelId, { selfDeaf: true, selfVideo: false });
+        } catch (e) {
+            log(`join attempt ${attempt} failed: ${e.message}`);
+            try { state.conn?.disconnect(); } catch {}
+            await sleep(2500);
+        }
+    }
+    if (!conn) throw new Error("could not join voice channel after 3 attempts");
     state.conn = conn;
     log("voice ready. audioCodec=%s videoCodec=%s mediaSession=%s ssrc=%d vssrc=%d dave=%d",
         conn.audioCodec, conn.videoCodecName, conn.mediaSessionId, conn.ssrc, conn.videoSSRC, conn.daveProtocolVersion);
@@ -213,7 +225,10 @@ async function stop() {
     try { state.conn?.disconnect(); } catch {}
     try { bot.shards.get(0)?.sendWS(4, { guild_id: GUILD_ID, channel_id: null, self_mute: false, self_deaf: false, self_video: false }); } catch {}
     state = { active: false, lessonId: null, conn: null, procs: [], url: null };
+    await sleep(800); // let Discord settle the voice state
 }
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---------- control API ----------
 const app = express();
