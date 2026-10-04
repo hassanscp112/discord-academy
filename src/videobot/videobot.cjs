@@ -187,9 +187,10 @@ async function start({ url, lessonId = 0, channelId, guildId }) {
     log("voice ready. audioCodec=%s videoCodec=%s mediaSession=%s ssrc=%d vssrc=%d dave=%d",
         conn.audioCodec, conn.videoCodecName, conn.mediaSessionId, conn.ssrc, conn.videoSSRC, conn.daveProtocolVersion);
 
-    // flag self_video on the main gateway so members see the stream tile
+    // flag the Go-Live screenshare on the main gateway (self_stream = screenshare,
+    // self_video = camera; real screenshare clients set self_stream)
     const shard = bot.shards.get(0);
-    shard.sendWS(4, { guild_id: guildId || GUILD_ID, channel_id: channelId, self_mute: false, self_deaf: true, self_video: true });
+    shard.sendWS(4, { guild_id: guildId || GUILD_ID, channel_id: channelId, self_mute: false, self_deaf: false, self_video: false, self_stream: true });
 
     // announce the screenshare: op12 Video publish (the real signal) + op5 legacy form
     conn.publishVideo?.();

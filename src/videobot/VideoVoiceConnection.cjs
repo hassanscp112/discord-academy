@@ -194,7 +194,7 @@ class VoiceConnection extends EventEmitter {
         this.sendHeader[1] = 0x78;
 
         // --- fork additions: video RTP stream state ---
-        this.sendVideoHeader = Buffer.alloc(12);
+        this.sendVideoHeader = Buffer.alloc(20);
         this.sendVideoBuffer = Buffer.alloc(1500);
         this.videoSSRC = 0;
         this.vSequence = Math.floor(Math.random() * 0xFFFF);
@@ -1250,11 +1250,20 @@ class VoiceConnection extends EventEmitter {
     // --- fork addition: send one video RTP packet (payload = one H264 packetized unit) ---
     sendVideoPacket(payload, marker) {
         if(!this.ready || !this.udpSocket || this.videoSSRC === 0) return false;
-        this.sendVideoHeader[0] = 0x80;
+        // 12-byte RTP header + 8-byte one-byte-extension block (abs-send-time)
+        this.sendVideoHeader[0] = 0x90; // v2 + extension bit
         this.sendVideoHeader[1] = (marker ? 0x80 : 0x00) | (this.videoPayloadType & 0x7F);
         this.sendVideoHeader.writeUInt16BE(this.vSequence >>> 0, 2);
         this.sendVideoHeader.writeUInt32BE(this.vTimestamp >>> 0, 4);
         this.sendVideoHeader.writeUInt32BE(this.videoSSRC >>> 0, 8);
+        this.sendVideoHeader[12] = 0xBE; this.sendVideoHeader[13] = 0xDE; // one-byte ext
+        this.sendVideoHeader[14] = 0x00; this.sendVideoHeader[15] = 0x01; // 1 word
+        this.sendVideoHeader[16] = 0x12; // id 1, len 3 (abs-send-time)
+        const ast = Math.floor(Date.now() * 262144 / 1000) & 0xFFFFFF; // 6.18 fixed
+        this.sendVideoHeader[17] = (ast >> 16) & 0xFF;
+        this.sendVideoHeader[18] = (ast >> 8) & 0xFF;
+        this.sendVideoHeader[19] = ast & 0xFF;
+        const headerLen = 20;
 
         this.#vnonce = (this.#vnonce + 1) >>> 0;
         this.#vnonceBuffer.writeUInt32BE(this.#vnonce, 0);
@@ -1271,28 +1280,28 @@ class VoiceConnection extends EventEmitter {
 
         if(this.mode === "aead_aes256_gcm_rtpsize") {
             const cipher = crypto.createCipheriv("aes-256-gcm", this.secret, this.#vnonceBuffer);
-            cipher.setAAD(this.sendVideoHeader);
+            cipher.setAAD(this.sendVideoHeader.subarray(0, headerLen));
             const result = Buffer.concat([cipher.update(frame), cipher.final(), cipher.getAuthTag()]);
-            this.sendVideoHeader.copy(this.sendVideoBuffer, 0, 0, 12);
-            result.copy(this.sendVideoBuffer, 12);
-            this.#vnonceBuffer.copy(this.sendVideoBuffer, 12 + result.length, 0, 4);
-            this.sendUDPPacket(this.sendVideoBuffer.subarray(0, 12 + result.length + 4));
+            this.sendVideoHeader.copy(this.sendVideoBuffer, 0, 0, headerLen);
+            result.copy(this.sendVideoBuffer, headerLen);
+            this.#vnonceBuffer.copy(this.sendVideoBuffer, headerLen + result.length, 0, 4);
+            this.sendUDPPacket(this.sendVideoBuffer.subarray(0, headerLen + result.length + 4));
         } else if(Sodium) {
             const ABYTES = Sodium.crypto_aead_xchacha20poly1305_ietf_ABYTES;
             const length = frame.length + ABYTES;
-            this.sendVideoBuffer.fill(0, 12 + frame.length, 12 + frame.length + ABYTES);
-            frame.copy(this.sendVideoBuffer, 12);
+            this.sendVideoBuffer.fill(0, headerLen + frame.length, headerLen + frame.length + ABYTES);
+            frame.copy(this.sendVideoBuffer, headerLen);
             Sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
-                this.sendVideoBuffer.subarray(12, 12 + length),
-                this.sendVideoBuffer.subarray(12, 12 + frame.length),
-                this.sendVideoHeader,
+                this.sendVideoBuffer.subarray(headerLen, headerLen + length),
+                this.sendVideoBuffer.subarray(headerLen, headerLen + frame.length),
+                this.sendVideoHeader.subarray(0, headerLen),
                 null,
                 this.#vnonceBuffer,
                 this.secret
             );
-            this.sendVideoHeader.copy(this.sendVideoBuffer, 0, 0, 12);
-            this.#vnonceBuffer.copy(this.sendVideoBuffer, 12 + length, 0, 4);
-            this.sendUDPPacket(this.sendVideoBuffer.subarray(0, 12 + length + 4));
+            this.sendVideoHeader.copy(this.sendVideoBuffer, 0, 0, headerLen);
+            this.#vnonceBuffer.copy(this.sendVideoBuffer, headerLen + length, 0, 4);
+            this.sendUDPPacket(this.sendVideoBuffer.subarray(0, headerLen + length + 4));
         }
         this.vSequence = (this.vSequence + 1) & 0xFFFF;
         return true;
