@@ -144,6 +144,40 @@ export async function tick({ client = null, bus, now = new Date() } = {}) {
   await refreshDashboard(client);
 }
 
+// On-demand: pull the lesson's session to RIGHT NOW (create one if needed)
+// and fire the starting transition immediately.
+export async function startSessionNow({ client = null, bus, lessonId, now = new Date() } = {}) {
+  const lesson = A.getLesson(lessonId);
+  if (!lesson) return { ok: false, error: 'Lesson not found.' };
+  if (A.listSessions({ future: true }).some(s => s.status === 'live')) {
+    return { ok: false, error: 'A class is already live — finish it first.' };
+  }
+  let s = A.sessionForLesson(lessonId);
+  if (s) {
+    A.setSession(s.id, now.toISOString());
+    s = A.getSession(s.id);
+  } else {
+    const r = getDb().prepare("INSERT INTO sessions (lesson_id, scheduled_at, status) VALUES (?, ?, 'scheduled')")
+      .run(lessonId, now.toISOString());
+    s = A.getSession(Number(r.lastInsertRowid));
+  }
+  const vars = {
+    lesson_title: lesson.title, url_line: urlLine(lesson.url), url: lesson.url,
+    when: fmtInTz(now, config.tz), ping: pingTag(), vc_name: 'study-room',
+  };
+  const msg = await bus.postTo('channel_dashboard', {
+    content: fill(templates.starting, vars),
+    components: [new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`sess:finish:${s.id}`).setLabel('Finish session').setStyle(ButtonStyle.Success),
+    )],
+  });
+  run("UPDATE sessions SET status = 'live', live_post_id = ? WHERE id = ?", msg?.id ?? '', s.id);
+  if (lesson.url) startStream(client, lessonId, lesson.url);
+  markDashboardDirty();
+  await refreshDashboard(client, { force: true });
+  return { ok: true, session: A.getSession(s.id) };
+}
+
 export async function finishSession({ client, bus, sessionId }) {
   stopStream();
   const res = A.finalizeSession(sessionId);
