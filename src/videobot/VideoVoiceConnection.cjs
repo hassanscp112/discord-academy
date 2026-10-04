@@ -1291,6 +1291,26 @@ class VoiceConnection extends EventEmitter {
         return true;
     }
 
+    // --- fork addition: announce the screenshare so clients render the tile ---
+    announceScreenshare(opts = {}) {
+        this.sendWS(VoiceOPCodes.SPEAKING, {
+            speaking: 1,
+            delay: 0,
+            ssrc: this.videoSSRC,
+            streams: [{
+                type: "video",
+                rid: "100",
+                ssrc: this.videoSSRC,
+                rtx_ssrc: this.videoSSRC + 1,
+                active: true,
+                quality: 100,
+                max_bitrate: opts.maxBitrate ?? 2500000,
+                max_framerate: opts.maxFramerate ?? 30,
+                max_resolution: { type: "fixed", width: opts.width ?? 1280, height: opts.height ?? 720 },
+            }],
+        });
+    }
+
     #sendUnbound() {
         if(!this.piper.encoding && this.piper.dataPacketCount === 0) {
             return this.stopPlaying();

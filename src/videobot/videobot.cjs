@@ -132,31 +132,39 @@ function packetizeFrame(nals) {
     return out; // RTP payloads; last one gets the marker bit
 }
 
-// ---------- streaming ----------
-function videoPath(lessonId) { return `data/cache/lesson-${lessonId}.video.mp4`; }
-
-function downloadVideo(lessonId, url) {
+// ---------- stream resolution: direct YouTube -> ffmpeg, no downloads ----------
+function runYt(args) {
     return new Promise((res, rej) => {
-        mkdirSync("data/cache", { recursive: true });
-        const p = videoPath(lessonId);
-        if (existsSync(p) && statSync(p).size > 100000) return res(p);
-        const ytdlp = spawn(YTDLP, [
-            "-f", "bv*[vcodec^=avc1][height<=720]+ba/b[height<=720][vcodec^=avc1]",
-            "--merge-output-format", "mp4", "--no-playlist", "--js-runtimes", "node",
-            "-o", p, url,
-        ], { stdio: ["ignore", "pipe", "pipe"] });
-        swallow(ytdlp.stderr);
-        ytdlp.stderr.on("data", d => log("[ytdlp]", String(d).split("\n")[0].slice(0, 150)));
-        ytdlp.on("close", code => (code === 0 && existsSync(p)) ? res(p) : rej(new Error("yt-dlp failed code " + code)));
+        const p = spawn(YTDLP, [...args, "--js-runtimes", "node"], { stdio: ["ignore", "pipe", "pipe"] });
+        swallow(p.stderr);
+        let out = "";
+        p.stdout.on("data", d => out += d);
+        p.on("close", code => code === 0 ? res(out.trim()) : rej(new Error("yt-dlp failed code " + code)));
     });
+}
+
+async function resolveStream(url) {
+    // direct media URLs for the selected formats (video+audio preferred)
+    const urls = (await runYt([
+        "--print", "urls",
+        "-f", "bv*[vcodec^=avc1][height<=720]+ba/b[height<=720][vcodec^=avc1]/b",
+        url,
+    ])).split("\n").map(s => s.trim()).filter(Boolean);
+    const isLive = (await runYt(["--print", "%(is_live)s", url])) === "True";
+    return {
+        isLive,
+        videoUrl: urls.length > 1 ? urls[0] : null,   // separate video stream
+        audioUrl: urls.length > 1 ? urls[urls.length - 1] : null,
+        combined: urls.length === 1 ? urls[0] : null,  // progressive single stream
+    };
 }
 
 async function start({ url, lessonId = 0, channelId, guildId }) {
     if (state.active) await stop();
-    log("starting video for lesson", lessonId);
+    log("starting stream for lesson", lessonId, url.slice(0, 50));
 
-    const file = await downloadVideo(lessonId, url);
-    log("video file ready:", file);
+    const src = await resolveStream(url);
+    log(`resolved: ${src.isLive ? "LIVE" : "vod"} · ${src.videoUrl ? "separate A/V" : "progressive"}`);
 
     // settle after any previous disconnect — Discord drops racy voice state updates
     await sleep(1800);
@@ -166,8 +174,12 @@ async function start({ url, lessonId = 0, channelId, guildId }) {
             conn = await bot.joinVoiceChannel(channelId, { selfDeaf: true, selfVideo: false });
         } catch (e) {
             log(`join attempt ${attempt} failed: ${e.message}`);
-            try { state.conn?.disconnect(); } catch {}
-            await sleep(2500);
+            // discard the poisoned connection object entirely and clear our voice state
+            const broken = bot.voiceConnections.get(guildId || GUILD_ID);
+            if (broken) { try { broken.disconnect(); } catch {} }
+            bot.voiceConnections.delete(guildId || GUILD_ID);
+            try { bot.shards.get(0)?.sendWS(4, { guild_id: guildId || GUILD_ID, channel_id: null, self_mute: false, self_deaf: false, self_video: false }); } catch {}
+            await sleep(3000);
         }
     }
     if (!conn) throw new Error("could not join voice channel after 3 attempts");
@@ -179,15 +191,28 @@ async function start({ url, lessonId = 0, channelId, guildId }) {
     const shard = bot.shards.get(0);
     shard.sendWS(4, { guild_id: guildId || GUILD_ID, channel_id: channelId, self_mute: false, self_deaf: true, self_video: true });
 
+    // announce the screenshare stream so clients render it
+    conn.announceScreenshare?.();
+
+    // input pacing: realtime for VOD, low-latency passthrough for live
+    const inFlags = src.isLive ? ["-fflags", "nobuffer", "-flags", "low_delay"] : ["-re"];
+
     // audio pipe (dysnomia play handles ogg/opus + DAVE audio)
-    const aFfmpeg = spawn("ffmpeg", ["-hide_banner", "-loglevel", "error", "-re", "-i", file, "-vn", "-ac", "2", "-ar", "48000", "-c:a", "libopus", "-b:a", "96k", "-f", "opus", "pipe:1"], { stdio: ["pipe", "pipe", "pipe"] });
+    const aFfmpeg = spawn("ffmpeg", [
+        "-hide_banner", "-loglevel", "error", ...inFlags,
+        "-i", src.audioUrl ?? src.combined,
+        ...(src.audioUrl ? [] : ["-vn"]),
+        "-ac", "2", "-ar", "48000", "-c:a", "libopus", "-b:a", "96k", "-f", "opus", "pipe:1",
+    ], { stdio: ["pipe", "pipe", "pipe"] });
     swallow(aFfmpeg.stdin, aFfmpeg.stdout, aFfmpeg.stderr, aFfmpeg);
     conn.play(aFfmpeg.stdout, { format: "ogg" });
     state.procs.push(aFfmpeg);
 
     // video pipe
     const vFfmpeg = spawn("ffmpeg", [
-        "-hide_banner", "-loglevel", "error", "-re", "-i", file,
+        "-hide_banner", "-loglevel", "error", ...inFlags,
+        "-i", src.videoUrl ?? src.combined,
+        ...(src.videoUrl ? [] : ["-an"]),
         "-vf", "scale=1280:720", "-r", "30",
         "-c:v", "libx264", "-profile:v", "baseline", "-level", "3.1",
         "-preset", "veryfast", "-tune", "zerolatency",
@@ -214,6 +239,7 @@ async function start({ url, lessonId = 0, channelId, guildId }) {
 
     state.active = true;
     state.lessonId = lessonId;
+    setTimeout(() => { try { state.conn?.announceScreenshare?.(); } catch {} }, 1500); // re-announce after DAVE settles
     log("STREAMING video+audio");
 }
 
