@@ -106,8 +106,8 @@ export function startStream(client, lessonId, url) {
 
   const resource = createAudioResource(ffmpeg.stdout, { inputType: StreamType.OggOpus });
   player.play(resource);
-  // natural end of video: stop the player but STAY in the room until session end
-  player.on('idle', () => { console.log('[streamer] audio ended'); });
+  player.on('stateChange', (o, n) => { if (n.status !== o.status) console.log('[streamer] player:', n.status); });
+  player.on('error', e => { console.log('[streamer] player error:', e.message); });
 
   console.log('[streamer] joined study VC, streaming:', url.slice(0, 60));
   return true;

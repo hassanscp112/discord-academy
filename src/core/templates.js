@@ -11,7 +11,8 @@ export const templates = {
   starting:
     '🎬 **Class is starting NOW!** — **{{lesson_title}}**\n' +
     '{{url_line}}\n' +
-    '{{ping}} Jump into 🔊 {{vc_name}}!',
+    '{{ping}} I\'m in 🔊 {{vc_name}} playing the lesson audio.\n' +
+    '📺 **Want synced video?** Tap the 🚀 rocket in the voice channel → **Watch Together** → paste the link above.',
 
   missed:
     '😴 **No one showed up** for **{{lesson_title}}** ({{when}}).\n' +
