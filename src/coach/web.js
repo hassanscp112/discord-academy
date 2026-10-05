@@ -2,6 +2,7 @@
 // + token-auth API for the AI Admin studio. Old HTML pages are gone.
 import express from 'express';
 import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as A from '../core/academy.js';
@@ -236,11 +237,13 @@ button{width:100%;margin-top:14px;background:#5865f2;color:#fff;border:none;bord
   });
   app.get('/logout', (_req, res) => { res.setHeader('Set-Cookie', 'dash=; Max-Age=0'); res.redirect('/login'); });
 
-  app.use('/app.css', express.static(join(here, '../../public/app.css')));
-  app.use('/app.js', express.static(join(here, '../../public/app.js')));
-  app.get('/', (req, res) => {
-    if (!hasDash(req)) return res.redirect('/login');
-    res.sendFile(join(here, '../../public/index.html'));
+  // ---------- static: any frontend dropped into public/ (user-built dashboard) ----------
+  app.use(express.static(join(here, '../../public')));
+  app.get('/', (req, res, next) => {
+    const index = join(here, '../../public/index.html');
+    if (hasDash(req) && existsSync(index)) return res.sendFile(index);
+    if (existsSync(index)) return res.redirect('/login');
+    res.status(204).end(); // no UI installed yet — API only
   });
 
   return app.listen(config.port, '0.0.0.0', () => console.log(`[coach] dashboard+api on :${config.port}`));
