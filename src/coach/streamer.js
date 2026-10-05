@@ -68,25 +68,10 @@ export function isStreaming() {
 export function startStream(client, lessonId, url) {
   if (!url) return Promise.resolve(false);
   stopStream();
-  // preferred path: the video sidecar pushes REAL video+audio into the VC
-  return fetch(`${VIDEOBOT}/start`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ url, lessonId, channelId: getSetting('study_vc'), guildId: config.guildId }),
-    signal: AbortSignal.timeout(8000),
-  })
-    .then(async r => {
-      if (r.ok) { console.log('[streamer] video sidecar streaming lesson', lessonId); return true; }
-      // sidecar answered with an error (e.g. voice join failed): it already owns
-      // the voice session for this bot token — falling back would double-join
-      const body = await r.json().catch(() => ({}));
-      console.log('[streamer] video sidecar declined:', body.error ?? r.status, '— NOT falling back to avoid a voice session conflict');
-      return false;
-    })
-    .catch(e => {
-      console.log('[streamer] video sidecar unreachable (' + e.message + ') — falling back to audio-only');
-      return startAudioOnly(client, lessonId, url);
-    });
+  // Audio-only mode: the Coach itself joins the VC and plays the lesson.
+  // (Video sidecar code lives in src/videobot — parked until Discord
+  // allows video for bot tokens.)
+  return Promise.resolve(startAudioOnly(client, lessonId, url));
 }
 
 function startAudioOnly(client, lessonId, url) {
