@@ -18,7 +18,8 @@ function toast(msg, err = false) {
   t.textContent = msg; t.className = err ? 'err' : ''; t.hidden = false;
   clearTimeout(t._h); t._h = setTimeout(() => (t.hidden = true), 3200);
 }
-const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'"': '&#39;' }[c]));
+const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ESC_MAP[c]);
 
 const fmt = (iso, withDate = true) => {
   if (!iso) return '—';
