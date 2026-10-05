@@ -73,7 +73,7 @@ function renderOverview(v) {
   let hero = '';
   if (live) {
     hero = `<div class="live-banner">
-      <div><span class="pulse"></span><b>الحصة مباشرة الآن</b>
+      <div><span class="pill live" style="font-size:13px">🔴 مباشر</span> <b>الحصة مباشرة الآن</b>
         <div class="stat" style="font-size:22px">${esc(live.lesson_title)}</div>
         <div class="dim">${live.attendees} في الغرفة · بدأت ${fmt(live.scheduled_at)}</div></div>
       <button class="btn stop big" onclick="act('action/finish')">⏹ إنهاء الحصة وصرف النقاط</button>
@@ -256,7 +256,7 @@ async function memberModal(id) {
   </div>`).join('');
   openModal(`👤 ${esc(m.name)}`, `${m.xp} نقطة · ${m.level.emoji} ${esc(m.level.name)} · سلسلة 🔥${m.streak}`, `
     <div><b>الدروس المكتملة: ${m.lessons_done} / ${state.data.lessons.length}</b>
-      <div class="xpbar"><i style="width:${pct}%"></i></div></div>
+      <div class="xpbar"><i style="transform:scaleX(${(pct / 100).toFixed(3)})"></i></div></div>
     <h3 style="margin:16px 0 4px;font-size:13px;color:var(--muted)">سجل النشاط</h3>
     <div class="timeline">${events || '<div class="empty">لا نشاط بعد</div>'}</div>
     <div class="modal-actions">
