@@ -17,7 +17,7 @@ import { templates } from '../core/templates.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const dashCookie = () => createHash('sha256').update(`academy:${config.dashPassword}`).digest('hex').slice(0, 32);
-const DAY_AR = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const DAY_AR = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 
 function memberTimeline(userId) {
   const db = getDb();
@@ -164,10 +164,10 @@ export function startWeb({ client = null, bus }) {
     ok(res, 'أُلغيت الحصة ✓');
   });
   app.post('/api/dash/template', dashAuth, (req, res) => {
-    const map = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+    const map = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, 'الأحد': 0, 'الاحد': 0, 'الإثنين': 1, 'الاثنين': 1, 'الثلاثاء': 2, 'الأربعاء': 3, 'الاربعاء': 3, 'الخميس': 4, 'الجمعة': 5, 'السبت': 6 };
     const days = String(req.body?.days ?? '').toLowerCase().split(',').map(d => map[d.trim()]).filter(d => d !== undefined);
     const time = String(req.body?.time ?? '');
-    if (!days.length || !/^\d{2}:\d{2}$/.test(time)) return res.status(400).json({ error: 'أيام أو وقت غير صالح (sun,wed + 20:00)' });
+    if (!days.length || !/^\d{2}:\d{2}$/.test(time)) return res.status(400).json({ error: 'أيام أو وقت غير صالح (مثال: الأحد,الأربعاء + 20:00)' });
     A.setTemplate({ days, time });
     ok(res, 'حُفظ القالب ✓');
   });
