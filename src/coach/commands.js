@@ -44,19 +44,13 @@ export const commandDefs = [
   new SlashCommandBuilder().setName('myprogress').setDescription('Show your progress'),
   new SlashCommandBuilder().setName('leaderboard').setDescription('XP leaderboard')
     .addBooleanOption(o => o.setName('full').setDescription('Include inactive members (admin view)')),
-  new SlashCommandBuilder().setName('quest').setDescription('Manage quests (admin)')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addSubcommand(sc => sc.setName('create').setDescription('Create a quest')
-      .addStringOption(o => o.setName('title').setDescription('Quest title').setRequired(true))
-      .addStringOption(o => o.setName('lessons').setDescription('Comma-separated lesson ids').setRequired(true))
-      .addStringOption(o => o.setName('ends').setDescription('End date YYYY-MM-DD').setRequired(true)))
-    .addSubcommand(sc => sc.setName('list').setDescription('List quests'))
-    .addSubcommand(sc => sc.setName('end').setDescription('End a quest now')
-      .addIntegerOption(o => o.setName('id').setDescription('Quest id').setRequired(true))),
+  new SlashCommandBuilder().setName('quest').setDescription('Show the academy checklist')
+    .addSubcommand(sc => sc.setName('list').setDescription('List checklist items')),
   new SlashCommandBuilder().setName('optout').setDescription('Toggle check-in DMs on/off for you'),
 ];
 
 const e = (title, desc, color = 0x5865f2) => new EmbedBuilder().setTitle(title).setDescription(desc.slice(0, 4000)).setColor(color);
+const QCAT = { book: '📖', lecture: '📺', course: '🎓' };
 
 export function isAdmin(interaction) {
   return interaction.member?.permissions?.has(PermissionFlagsBits.ManageGuild) || config.bossIds.includes(interaction.user.id);
@@ -108,18 +102,6 @@ export async function handleCommand(interaction) {
       try {
         const created = A.generateSchedule({});
         if (!created.length) return interaction.reply({ embeds: [e('📅 Nothing to schedule', 'All planned lessons already have a session.')] });
-        // auto quest for the week's lessons
-        const lessonIds = [...new Set(created.map(s => s.lesson_id))];
-        const titles = lessonIds.map(id => A.getLesson(id)?.title).filter(Boolean);
-        const last = created[created.length - 1];
-        A.createQuest({
-          title: `Keep pace: ${titles.join(' + ')}`,
-          description: "Finish the lessons of this week's live sessions!",
-          lessonIds,
-          startsAt: new Date().toISOString(),
-          endsAt: new Date(new Date(last.scheduled_at).getTime() + 86400000).toISOString(),
-          auto: true,
-        });
         markDashboardDirty();
         await refreshDashboard(interaction.client, { force: true });
         const lines = created.map(s => `**${A.getLesson(s.lesson_id).title}** → ${fmtInTz(new Date(s.scheduled_at), tz)}`);
@@ -175,16 +157,13 @@ export async function handleCommand(interaction) {
     const done = A.listProgress(u.id);
     const total = A.listLessons().length;
     const streak = A.currentStreak(u.id);
-    const quests = A.listQuests().map(q => {
-      const need = q.lesson_ids.length;
-      const have = q.lesson_ids.filter(id => done.some(d => d.lesson_id === id)).length;
-      return `🗝️ ${q.title} — ${have}/${need}${A.questCompletedBy(q.id, u.id) ? ' ✅' : ''}`;
-    });
+    const quests = A.listQuests().map(q =>
+      `${QCAT[q.category] ?? '📜'} ${q.title}${A.questCompletedBy(q.id, u.id) ? ' — ✅' : ''}`);
     return interaction.reply({
       embeds: [e(`📈 ${u.username}`, [
         `**${xp} XP** · ${lvl.emoji} **${lvl.name}** · 🔥 streak: **${streak}**`,
         `Lessons: **${done.length}/${total}**`,
-        quests.length ? `\n${quests.join('\n')}` : '',
+        quests.length ? `\n**Checklist:**\n${quests.join('\n')}` : '',
       ].join('\n'))], ephemeral: true,
     });
   }
@@ -203,37 +182,10 @@ export async function handleCommand(interaction) {
   }
 
   if (cmd === 'quest') {
-    const sub = opts.getSubcommand();
-    if (sub === 'create') {
-      const ids = opts.getString('lessons', true).split(',').map(s => parseInt(s.trim(), 10)).filter(Boolean);
-      const ends = opts.getString('ends', true);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(ends)) return interaction.reply({ embeds: [e('❌ Bad date', 'Use `YYYY-MM-DD`', 0xed4245)], ephemeral: true });
-      const id = A.createQuest({
-        title: opts.getString('title', true),
-        lessonIds: ids,
-        startsAt: new Date().toISOString(),
-        endsAt: zonedToUtc(ends, '23:59', tz).toISOString(),
-      });
-      markDashboardDirty();
-      await interaction.deferReply();
-      const ch = getSetting('channel_dashboard');
-      if (ch) {
-        const c = await interaction.client.channels.fetch(ch).catch(() => null);
-        if (c) await c.send({ content: templates.quest_new
-          .replace('{{title}}', opts.getString('title', true))
-          .replace('{{description}}', `Finish lessons ${ids.join(', ')}`)
-          .replace('{{xp}}', String(getSetting('xp_quest', '150')))
-          .replace('{{ends}}', ends) });
-      }
-      return interaction.editReply({ embeds: [e('🗝️ Quest created', `#${id} — ${opts.getString('title')}`)] });
-    }
-    if (sub === 'list') {
-      const rows = A.listQuests({ activeOnly: false }).slice(0, 10).map(q => `#${q.id} · **${q.title}** · ends ${q.ends_at.slice(0, 10)} · ${q.status}`);
-      return interaction.reply({ embeds: [e('🗝️ Quests', rows.join('\n') || '_None_')] });
-    }
-    if (sub === 'end') {
-      A.endQuest(opts.getInteger('id', true));
-      return interaction.reply({ embeds: [e('🏁 Quest ended', `#${opts.getInteger('id')}`)] });
+    if (opts.getSubcommand() === 'list') {
+      const rows = A.listQuests().map(q =>
+        `${QCAT[q.category] ?? '📜'} **${q.title}** — ✅ ${A.questCompletionCount(q.id)}`);
+      return interaction.reply({ embeds: [e('📜 Checklist', rows.join('\n') || '_Empty — the owner adds items from the dashboard._')] });
     }
   }
 
@@ -258,14 +210,6 @@ export async function handleButton(interaction) {
     const before = A.xpTotal(interaction.user.id);
     const res = A.completeLesson(interaction.user.id, lessonId);
     if (res.already) return interaction.reply({ content: 'You already marked this lesson ✅', ephemeral: true });
-    for (const q of A.listQuests()) {
-      const done = await A.tryCompleteQuest(q.id, interaction.user.id);
-      if (done) {
-        await interaction.channel?.send(templates.quest_done
-          .replace('{{mention}}', `<@${interaction.user.id}>`)
-          .replace('{{title}}', q.title).replace('{{xp}}', String(done.quest.xp_reward)));
-      }
-    }
     await announceLevelUp(interaction.client, interaction.user.id, before);
     const xp = A.xpTotal(interaction.user.id);
     const lvl = A.levelFor(xp);
@@ -275,6 +219,21 @@ export async function handleButton(interaction) {
       content: `🎉 Recorded: **${res.granted} XP** — total **${xp} XP** (${lvl.emoji} ${lvl.name})`,
       ephemeral: true,
     });
+  }
+
+  if (kind === 'quest') {
+    if (action === 'check') {
+      A.upsertParticipant(interaction.user.id, interaction.user.username);
+      const done = A.checkQuest(parseInt(idStr, 10), interaction.user.id);
+      if (!done) return interaction.reply({ content: 'هذا العنصر لم يعد في القائمة.', ephemeral: true });
+      if (!done.first) return interaction.reply({ content: 'سجّلته من قبل ✅', ephemeral: true });
+      await interaction.channel?.send(templates.quest_done
+        .replace('{{mention}}', `<@${interaction.user.id}>`)
+        .replace('{{title}}', done.quest.title)).catch(() => null);
+      markDashboardDirty();
+      await refreshDashboard(interaction.client, { force: true }).catch(() => null);
+      return interaction.reply({ content: `سُجّل إنجازك ✅ — **${done.quest.title}**`, ephemeral: true });
+    }
   }
 
   if (kind === 'sess') {

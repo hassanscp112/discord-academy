@@ -20,7 +20,6 @@ const DEFAULT_SETTINGS = {
   ping_role: '',
   xp_attendance: '20',
   xp_completion: '50',
-  xp_quest: '150',
   xp_streak_bonus: '10',
   xp_streak_bonus_cap: '50',
   levels_json: JSON.stringify(DEFAULT_LEVELS),
@@ -117,6 +116,8 @@ export function getDb(path = config.dbPath) {
       value TEXT NOT NULL
     );
   `);
+  // v2 quests: checklist items (book/lecture/course) — no XP, no lessons, no expiry
+  try { db.exec("ALTER TABLE quests ADD COLUMN category TEXT NOT NULL DEFAULT 'lecture'"); } catch {}
   const ins = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
   for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) ins.run(k, v);
   return db;

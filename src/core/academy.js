@@ -240,17 +240,23 @@ export function finalizeSession(sessionId) {
   return { session, attendees };
 }
 
-// ---------- quests ----------
-export function createQuest({ title, description = '', lessonIds = [], startsAt, endsAt, xpReward = null, auto = false }) {
+// ---------- quests: checklist of accomplishments (book / lecture / course) ----------
+export const QUEST_CATEGORIES = ['book', 'lecture', 'course'];
+
+export function createQuest({ title, description = '', category = 'lecture' }) {
+  const now = new Date().toISOString();
   const r = getDb().prepare(
-    'INSERT INTO quests (title, description, lesson_ids, starts_at, ends_at, xp_reward, auto) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(title, description, JSON.stringify(lessonIds), startsAt, endsAt, xpReward ?? Number(getSetting('xp_quest', '150')), auto ? 1 : 0);
+    "INSERT INTO quests (title, description, lesson_ids, starts_at, ends_at, xp_reward, auto, category) VALUES (?, ?, '[]', ?, ?, 0, 0, ?)"
+  ).run(title, description, now, new Date(Date.now() + 10 * 365 * 86400000).toISOString(),
+    QUEST_CATEGORIES.includes(category) ? category : 'lecture');
   return Number(r.lastInsertRowid);
 }
 
 export function listQuests({ activeOnly = true } = {}) {
-  const sql = activeOnly ? "SELECT * FROM quests WHERE status = 'active' ORDER BY ends_at" : 'SELECT * FROM quests ORDER BY ends_at DESC';
-  return getDb().prepare(sql).all().map(q => ({ ...q, lesson_ids: JSON.parse(q.lesson_ids) }));
+  const sql = activeOnly
+    ? "SELECT * FROM quests WHERE status = 'active' ORDER BY id DESC"
+    : 'SELECT * FROM quests ORDER BY id DESC';
+  return getDb().prepare(sql).all();
 }
 
 export function endQuest(questId) {
@@ -261,20 +267,14 @@ export function questCompletedBy(questId, userId) {
   return !!getDb().prepare('SELECT 1 FROM quest_completions WHERE quest_id = ? AND user_id = ?').get(questId, userId);
 }
 
-export function tryCompleteQuest(questId, userId) {
-  const quest = getDb().prepare('SELECT * FROM quests WHERE id = ?').get(questId);
-  if (!quest || quest.status !== 'active') return null;
-  const lessonIds = JSON.parse(quest.lesson_ids);
-  if (!lessonIds.length) return null;
-  const done = getDb().prepare(
-    `SELECT COUNT(*) AS c FROM progress WHERE user_id = ? AND lesson_id IN (${lessonIds.map(() => '?').join(',')})`
-  ).get(userId, ...lessonIds).c;
-  if (done < lessonIds.length) return null;
-  if (questCompletedBy(questId, userId)) return null;
-  if (new Date(quest.ends_at).getTime() < Date.now()) return null;
-  getDb().prepare('INSERT INTO quest_completions (quest_id, user_id, completed_at) VALUES (?, ?, ?)').run(questId, userId, nowIso());
-  const { total } = awardXp(userId, quest.xp_reward, 'quest');
-  return { quest, total, level: levelFor(total) };
+// member ticks a checklist item — no XP, just the record
+export function checkQuest(questId, userId) {
+  const quest = getDb().prepare("SELECT * FROM quests WHERE id = ? AND status = 'active'").get(questId);
+  if (!quest) return null;
+  const r = getDb().prepare(
+    'INSERT OR IGNORE INTO quest_completions (quest_id, user_id, completed_at) VALUES (?, ?, ?)'
+  ).run(questId, userId, nowIso());
+  return { quest, first: r.changes > 0 };
 }
 
 export function questCompletionCount(questId) {
@@ -333,6 +333,6 @@ export function overview() {
       const p = getParticipant(r.user_id);
       return { ...r, name: p?.display_name || r.user_id, level: levelFor(r.xp), streak: currentStreak(r.user_id) };
     }),
-    active_quests: listQuests(),
+    active_quests: listQuests().map(q => ({ ...q, done: questCompletionCount(q.id) })),
   };
 }

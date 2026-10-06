@@ -19,7 +19,7 @@ function bumpRevision() {
 //   lessons?: [{id?, position, title, url?, duration_min?, _delete?}],
 //   sessions?: [{id, scheduled_at?, _cancel?}],
 //   generate?: {count?}          // rebuild future sessions from template
-//   quests?: [{title, description?, lesson_ids, starts_at, ends_at, xp_reward?}]
+//   quests?: [{title, description?, category?}]   // checklist items: book/lecture/course
 // }
 export function applyPublish(payload) {
   if (payload.base_revision !== currentRevision()) {
@@ -71,11 +71,7 @@ export function applyPublish(payload) {
 
   if (Array.isArray(payload.quests)) {
     for (const q of payload.quests) {
-      A.createQuest({
-        title: q.title, description: q.description ?? '',
-        lessonIds: q.lesson_ids ?? [], startsAt: q.starts_at ?? new Date().toISOString(),
-        endsAt: q.ends_at, xpReward: q.xp_reward ?? null,
-      });
+      A.createQuest({ title: q.title, description: q.description ?? '', category: q.category });
       applied.quests++;
     }
   }

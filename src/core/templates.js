@@ -42,13 +42,10 @@ export const templates = {
     '🎉 {{mention}} leveled up to **{{emoji}} {{level_name}}** ({{xp}} XP)!',
 
   quest_new:
-    '🗝️ **New quest:** {{title}}\n{{description}}\nReward: **{{xp}} XP** · Ends {{ends}}',
+    '{{kind}} في قائمة الإنجاز: **{{title}}**\nاضغط «أنجزتها ✅» عند الإتمام.',
 
   quest_done:
-    '🏅 {{mention}} completed the quest **{{title}}**! (+{{xp}} XP)',
-
-  quest_expired:
-    '⌛ Quest **{{title}}** ended. Completed by {{count}} member(s).',
+    '🏅 {{mention}} أنجز: **{{title}}**!',
 
   recap:
     '📋 **Weekly recap**\n' +

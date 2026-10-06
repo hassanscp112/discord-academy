@@ -5,7 +5,7 @@ const state = { data: null, page: 'overview', memberFilter: '', editing: null, c
 const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ESC_MAP[c]);
 
-const TITLES = { overview: 'نظرة عامة', lessons: 'الدروس والجدول', members: 'الأعضاء', quests: 'المهام', settings: 'الإعدادات' };
+const TITLES = { overview: 'نظرة عامة', lessons: 'الدروس والجدول', members: 'الأعضاء', quests: 'قائمة الإنجاز', settings: 'الإعدادات' };
 let TZ = 'Asia/Riyadh';
 
 const api = async (path, body) => {
@@ -167,11 +167,11 @@ function rOverview(v) {
   </tr>`).join('');
 
   const o = d.overview;
-  const activeQ = d.quests.filter(q => q.status === 'active').length;
+  const qDone = d.quests.reduce((n, q) => n + (q.done || 0), 0);
   const summary = `<div class="surface" style="display:flex;gap:26px;flex-wrap:wrap;align-items:baseline">
     <div><b style="font-size:17px">${o.lessonsDone}/${o.lessonsTotal}</b> <span class="dim">درس مكتمل</span></div>
     <div><b style="font-size:17px">${d.participants.length}</b> <span class="dim">عضو</span></div>
-    <div><b style="font-size:17px">${activeQ}</b> <span class="dim">مهمة نشطة</span></div>
+    <div><b style="font-size:17px">${d.quests.length}</b> <span class="dim">عنصر بالقائمة · أنجزه ${qDone}</span></div>
     <div><b style="font-size:17px">${d.template ? d.template.daysText + ' ' + d.template.time : '—'}</b> <span class="dim">القالب الأسبوعي</span></div>
   </div>`;
 
@@ -373,45 +373,43 @@ $('#drawer-scrim').addEventListener('click', closeDrawer);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
 
 /* ============ QUESTS ============ */
+const QCATS = [
+  ['book', 'الكتب'],
+  ['lecture', 'المحاضرات'],
+  ['course', 'الدورات'],
+];
 function rQuests(v) {
   const d = state.data;
-  const rows = d.quests.map(q => `<tr>
-    <td><b>${esc(q.title)}</b></td>
-    <td class="dim">${q.lesson_ids.length} درس</td>
-    <td class="dim">${fmt(q.ends_at)}</td>
-    <td>${q.xp_reward}</td>
-    <td>${q.status === 'active' ? '<span class="pill ok">نشطة</span>' : '<span class="pill plain">منتهية</span>'}</td>
-    <td class="actions">${q.status === 'active' ? `<button class="btn danger sm" onclick="act('quest/end',{id:${q.id}})">إنهاء</button>` : ''}</td>
-  </tr>`).join('');
+  const groups = QCATS.map(([key, label]) => {
+    const items = d.quests.filter(q => q.category === key);
+    const rows = items.map(q => `<tr>
+      <td><b>${esc(q.title)}</b></td>
+      <td>${q.done ? `<span class="pill ok">أنجزه ${q.done}</span>` : '<span class="pill plain">لم ينجزه أحد بعد</span>'}</td>
+      <td class="actions"><button class="btn danger sm" onclick="act('quest/end',{id:${q.id}})">${icon('trash')} حذف</button></td>
+    </tr>`).join('');
+    return `<div class="surface"><h2>${label} (${items.length})</h2>
+      <div class="tbl-wrap"><table><tbody>
+        ${rows || `<tr><td class="empty">لا شيء بعد — أضف من الأعلى.</td></tr>`}
+      </tbody></table></div>
+    </div>`;
+  }).join('');
 
-  const checks = d.lessons.map(l => `<label style="display:flex;gap:8px;align-items:center;margin:6px 0;font-weight:400">
-    <input type="checkbox" value="${l.id}" class="q-l" style="width:auto"> ${esc(l.title)}</label>`).join('');
-
+  const catOpts = QCATS.map(([key, label]) => `<option value="${key}">${label}</option>`).join('');
   v.innerHTML = `
-  <div class="surface"><h2>مهمة جديدة</h2>
+  <div class="surface"><h2>إضافة إلى قائمة الإنجاز</h2>
     <div class="frow">
-      <div style="flex:2"><label>العنوان</label><input id="q-title" placeholder="تحدّي الأسبوع"></div>
-      <div><label>تنتهي في</label><input id="q-ends" type="date" dir="ltr"></div>
+      <div style="max-width:170px"><label>الفئة</label><select id="q-cat">${catOpts}</select></div>
+      <div style="flex:2"><label>العنوان</label><input id="q-title" placeholder="مثال: كتاب فن اللامبالاة"></div>
+      <div style="flex:0;align-self:flex-end"><button class="btn" onclick="addQuest()">${icon('plus')} إضافة</button></div>
     </div>
-    <label>الدروس المطلوبة</label>
-    <div style="max-height:150px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;padding:8px 12px">
-      ${checks || '<div class="empty">لا دروس — أضف دروساً أولاً.</div>'}
-    </div>
-    <div style="margin-top:12px"><button class="btn" onclick="addQuest()">${icon('plus')} إنشاء وإعلان</button>
-    <span class="vdim" style="margin-inline-start:8px">تُعلن المهمة تلقائياً في قناة الديسكورد.</span></div>
+    <div class="vdim" style="margin-top:9px">يُعلن العنصر في قناة الديسكورد مع زر «أنجزتها ✅» يضغطه كل طالب عند إتمامه، وتظهر النتيجة هنا مباشرة.</div>
   </div>
-  <div class="surface"><h2>المهام (${d.quests.length})</h2>
-    <div class="tbl-wrap"><table>
-      <thead><tr><th>المهمة</th><th>الدروس</th><th>تنتهي</th><th>المكافأة</th><th>الحالة</th><th></th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="6" class="empty">لا مهام بعد.<br><b>المهمة تدفع الطلاب لإكمال الدروس قبل الموعد مقابل نقاط.</b></td></tr>`}</tbody>
-    </table></div>
-  </div>`;
+  ${groups}`;
 }
 async function addQuest() {
-  const ids = $$('.q-l').filter(c => c.checked).map(c => +c.value);
-  if (!$('#q-title').value.trim() || !ids.length || !$('#q-ends').value)
-    return toast('أكمل العنوان والدروس والتاريخ', true);
-  await act('quest/add', { title: $('#q-title').value.trim(), lessonIds: ids, ends: $('#q-ends').value });
+  const title = $('#q-title').value.trim();
+  if (!title) return toast('اكتب العنوان', true);
+  await act('quest/add', { title, category: $('#q-cat').value });
 }
 
 /* ============ SETTINGS ============ */
@@ -419,7 +417,6 @@ const SETTING_DEFS = [
   ['tz', 'المنطقة الزمنية'],
   ['xp_attendance', 'نقاط الحضور'],
   ['xp_completion', 'نقاط إكمال الدرس'],
-  ['xp_quest', 'نقاط المهمة'],
   ['nudge_hour', 'ساعة التنبيه (0-23)'],
   ['nudge_cooldown_hours', 'فترة التنبيه (ساعات)'],
   ['recap_day', 'يوم الملخص (0=الأحد)'],

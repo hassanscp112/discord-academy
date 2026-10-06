@@ -2,6 +2,7 @@
 // + token-auth API for the AI Admin studio. Old HTML pages are gone.
 import express from 'express';
 import { createHash } from 'node:crypto';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -32,7 +33,7 @@ function memberTimeline(userId) {
   }
   for (const q of db.prepare(
     'SELECT qc.completed_at at, q.title FROM quest_completions qc JOIN quests q ON q.id = qc.quest_id WHERE qc.user_id = ?').all(userId)) {
-    items.push({ at: q.at, ico: '🏅', title: 'أنجز مهمة', sub: q.title });
+    items.push({ at: q.at, ico: '🏅', title: 'إنجاز', sub: q.title });
   }
   return items.sort((x, y) => new Date(y.at) - new Date(x.at));
 }
@@ -61,7 +62,8 @@ export function startWeb({ client = null, bus }) {
         ...p, xp: A.xpTotal(p.user_id), level: A.levelFor(A.xpTotal(p.user_id)),
         streak: A.currentStreak(p.user_id), lessons_done: A.listProgress(p.user_id).length,
       })),
-      quests: A.listQuests({ activeOnly: false }), settings: allSettings(),
+      quests: A.listQuests().map(q => ({ ...q, done: A.questCompletionCount(q.id) })),
+      settings: allSettings(),
     });
   });
   app.post('/api/publish', apiAuth, (req, res) => {
@@ -100,7 +102,8 @@ export function startWeb({ client = null, bus }) {
       botOk: config.disableDiscord ? false : !!client?.isReady?.(),
       lessons,
       sessions: A.listSessions({ future: true, limit: 50 }).map(x => ({ ...x, lesson_title: A.getLesson(x.lesson_id)?.title })),
-      participants, quests: A.listQuests({ activeOnly: false }),
+      participants,
+      quests: A.listQuests().map(q => ({ id: q.id, title: q.title, category: q.category, done: A.questCompletionCount(q.id) })),
       settings: { ...s, channel_dashboard_name: channelName(s.channel_dashboard), study_vc_name: channelName(s.study_vc) },
       overview: { lessonsDone: o.lessons_done, lessonsTotal: o.lessons_total },
       template: tpl ? { ...tpl, daysText: tpl.days.map(d => DAY_AR[d]).join(',') } : null,
@@ -178,29 +181,29 @@ export function startWeb({ client = null, bus }) {
     } catch (e) { res.status(400).json({ error: e.message }); }
   });
   app.post('/api/dash/quest/add', dashAuth, async (req, res) => {
-    const { title, lessonIds = [], ends } = req.body ?? {};
-    if (!title?.trim() || !lessonIds.length || !/^\d{4}-\d{2}-\d{2}$/.test(ends ?? ''))
-      return res.status(400).json({ error: 'أكمل الحقول (عنوان، دروس، تاريخ)' });
-    A.createQuest({
-      title: title.trim(), lessonIds: lessonIds.map(Number), startsAt: new Date().toISOString(),
-      endsAt: zonedToUtc(ends, '23:59', config.tz).toISOString(),
-    });
+    const { title, category = 'lecture' } = req.body ?? {};
+    const KIND = { book: 'كتاب جديد', lecture: 'محاضرة جديدة', course: 'دورة جديدة' };
+    if (!title?.trim() || !KIND[category]) return res.status(400).json({ error: 'أكمل العنوان واختر الفئة' });
+    const id = A.createQuest({ title: title.trim(), category });
     const chId = getSetting('channel_dashboard');
     if (chId && client) {
       const ch = await client.channels.fetch(chId).catch(() => null);
-      if (ch) await ch.send(templates.quest_new
-        .replace('{{title}}', title.trim())
-        .replace('{{description}}', `أكمل الدروس: ${lessonIds.map(id => A.getLesson(+id)?.title).filter(Boolean).join(' + ')}`)
-        .replace('{{xp}}', String(getSetting('xp_quest', '150')))
-        .replace('{{ends}}', ends)).catch(() => null);
+      if (ch) await ch.send({
+        content: templates.quest_new
+          .replace('{{kind}}', KIND[category])
+          .replace('{{title}}', title.trim()),
+        components: [new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`quest:check:${id}`).setLabel('أنجزتها ✅').setStyle(ButtonStyle.Success),
+        )],
+      }).catch(() => null);
     }
-    ok(res, 'أُنشئت المهمة وأُعلنت في الديسكورد ✓');
+    ok(res, 'أُضيف إلى قائمة الإنجاز وأُعلن في الديسكورد ✓');
   });
   app.post('/api/dash/quest/end', dashAuth, (req, res) => {
     A.endQuest(+(req.body?.id));
-    ok(res, 'أُنهيت المهمة ✓');
+    ok(res, 'أُزيل من قائمة الإنجاز ✓');
   });
-  const ALLOWED_SETTINGS = ['tz', 'xp_attendance', 'xp_completion', 'xp_quest', 'nudge_hour', 'nudge_over_dm', 'nudge_cooldown_hours', 'recap_day', 'recap_hour', 'reminder_minutes_before', 'missed_after_minutes', 'level_roles'];
+  const ALLOWED_SETTINGS = ['tz', 'xp_attendance', 'xp_completion', 'nudge_hour', 'nudge_over_dm', 'nudge_cooldown_hours', 'recap_day', 'recap_hour', 'reminder_minutes_before', 'missed_after_minutes', 'level_roles'];
   app.post('/api/dash/settings', dashAuth, (req, res) => {
     for (const [k, v] of Object.entries(req.body ?? {})) if (ALLOWED_SETTINGS.includes(k) && v !== '') setSetting(k, v);
     ok(res, 'حُفظت الإعدادات ✓');

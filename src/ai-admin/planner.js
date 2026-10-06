@@ -27,7 +27,7 @@ const TOOL_DEFS = [
   { type: 'function', function: { name: 'regenerate_schedule', description: 'Rebuild all future sessions from the template: upcoming lessons fill the next template slots in order.', parameters: { type: 'object', properties: {}, required: [] } } },
   { type: 'function', function: { name: 'set_session_time', description: 'Move one scheduled session to a new date/time.', parameters: { type: 'object', properties: { session_id: { type: 'integer' }, date: { type: 'string' }, time: { type: 'string' } }, required: ['session_id', 'date', 'time'] } } },
   { type: 'function', function: { name: 'cancel_session', description: 'Cancel one scheduled session (the lesson stays in the course).', parameters: { type: 'object', properties: { session_id: { type: 'integer' } }, required: ['session_id'] } } },
-  { type: 'function', function: { name: 'add_quest', description: 'Create a quest: students must finish the given lessons before a date to earn XP.', parameters: { type: 'object', properties: { title: { type: 'string' }, lesson_ids: { type: 'array', items: { type: 'integer' } }, ends_date: { type: 'string', description: 'YYYY-MM-DD' } }, required: ['title', 'lesson_ids', 'ends_date'] } } },
+  { type: 'function', function: { name: 'add_quest', description: 'Add an item to the academy checklist (books / lectures / courses students complete). No XP involved.', parameters: { type: 'object', properties: { title: { type: 'string' }, category: { type: 'string', enum: ['book', 'lecture', 'course'], description: 'book | lecture | course' } }, required: ['title', 'category'] } } },
   { type: 'function', function: { name: 'draft_summary', description: 'Short human-readable summary of the current draft.', parameters: { type: 'object', properties: {}, required: [] } } },
 ];
 
@@ -67,7 +67,7 @@ export function createPlanner({ ollama, coachApiUrl, apiToken, tz }) {
       template: draft.template,
       lessons: draft.lessons.map(l => ({ id: l.id, pos: l.position, title: l.title, status: l.status, url: l.url })),
       sessions: draft.sessions.map(s => ({ id: s.id, lesson: s.lesson_title, at: s.scheduled_at, status: s.status })),
-      quests: draft.quests.map(q => ({ id: q.id, title: q.title, ends: q.ends_at, lessons: q.lesson_ids })),
+      quests: draft.quests.map(q => ({ id: q.id, title: q.title, category: q.category, done: q.done })),
     }),
     draft_summary: () => {
       const l = draft.lessons.length;
@@ -134,11 +134,11 @@ export function createPlanner({ ollama, coachApiUrl, apiToken, tz }) {
       draft.sessions = draft.sessions.filter(x => x.id !== session_id);
       return `Cancelled session #${session_id} ("${s.lesson_title}").`;
     },
-    add_quest: ({ title, lesson_ids, ends_date }) => {
-      const q = { id: -Date.now(), title, lesson_ids, ends_at: `${ends_date}T23:59:00.000Z`, status: 'active', _new: true };
+    add_quest: ({ title, category }) => {
+      const q = { id: -Date.now(), title, category: ['book', 'lecture', 'course'].includes(category) ? category : 'lecture', _new: true };
       draft.quests.push(q);
       draft.dirty.quests.push(q);
-      return `Quest "${title}" drafted: finish lessons [${lesson_ids.join(', ')}] before ${ends_date}.`;
+      return `Checklist item drafted: [${q.category}] "${title}".`;
     },
   };
 
@@ -175,9 +175,7 @@ export function createPlanner({ ollama, coachApiUrl, apiToken, tz }) {
     if (lessonsChanged) payload.lessons = lessonsPayload;
 
     if (draft.dirty.quests.length) {
-      payload.quests = draft.dirty.quests.map(q => ({
-        title: q.title, lesson_ids: q.lesson_ids, ends_at: q.ends_at, starts_at: new Date().toISOString(),
-      }));
+      payload.quests = draft.dirty.quests.map(q => ({ title: q.title, category: q.category }));
     }
     return payload;
   }

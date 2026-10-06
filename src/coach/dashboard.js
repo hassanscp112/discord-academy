@@ -55,10 +55,11 @@ export function buildDashboardEmbed() {
   }
 
   if (o.active_quests.length) {
-    const lines = o.active_quests.slice(0, 3).map(q =>
-      `🗝️ **${q.title}** — ends ${fmtInTz(new Date(q.ends_at), tz, { weekday: undefined, hour: undefined, minute: undefined })}`
+    const CAT = { book: '📖', lecture: '📺', course: '🎓' };
+    const lines = o.active_quests.slice(0, 5).map(q =>
+      `${CAT[q.category] ?? '📜'} **${q.title}** — ✅ ${q.done}`
     );
-    embed.addFields({ name: '🗝️ Quests', value: lines.join('\n').slice(0, 1024), inline: false });
+    embed.addFields({ name: '📜 Checklist', value: lines.join('\n').slice(0, 1024), inline: false });
   }
 
   return embed;

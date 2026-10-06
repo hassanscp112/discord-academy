@@ -24,40 +24,8 @@ function sessRow(session) {
   );
 }
 
-async function questExpiry(bus) {
-  for (const q of A.listQuests()) {
-    if (new Date(q.ends_at).getTime() < Date.now()) {
-      A.endQuest(q.id);
-      await bus.postTo('channel_dashboard', {
-        content: fill(templates.quest_expired, { title: q.title, count: A.questCompletionCount(q.id) }),
-      });
-      markDashboardDirty();
-    }
-  }
-}
-
-// one auto quest per calendar month covering the next week's lessons
-async function autoQuest(bus) {
-  const weekKey = new Intl.DateTimeFormat('en-CA', { timeZone: config.tz }).format(new Date()).slice(0, 7);
-  if (getSetting('quest_week') === weekKey) return;
-  const upcoming = A.listSessions({ future: true }).filter(s => new Date(s.scheduled_at).getTime() < Date.now() + 7 * 86400000);
-  if (!upcoming.length) return;
-  const lessonIds = [...new Set(upcoming.map(s => s.lesson_id))];
-  const titles = lessonIds.map(id => A.getLesson(id)?.title).filter(Boolean);
-  const ends = new Date(new Date(upcoming[upcoming.length - 1].scheduled_at).getTime() + 86400000).toISOString();
-  A.createQuest({
-    title: `Keep pace: ${titles.join(' + ')}`,
-    description: "Finish this week's lessons and claim the reward!",
-    lessonIds, startsAt: new Date().toISOString(), endsAt: ends, auto: true,
-  });
-  run('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', 'quest_week', weekKey);
-  await bus.postTo('channel_dashboard', {
-    content: fill(templates.quest_new, {
-      title: titles.join(' + '), xp: getSetting('xp_quest', '150'), ends: fmtInTz(new Date(ends), config.tz),
-    }),
-  });
-  markDashboardDirty();
-}
+// Quests are now owner-managed checklist items (books/lectures/courses) —
+// no auto-generation, no expiry.
 
 // next free template slot after `after` — proposal only, no DB writes
 export function proposeSlot(after) {
@@ -69,9 +37,6 @@ export function proposeSlot(after) {
 }
 
 export async function tick({ client = null, bus, now = new Date() } = {}) {
-  await questExpiry(bus);
-  await autoQuest(bus);
-
   const remMin = Number(getSetting('reminder_minutes_before', '30'));
   const missMin = Number(getSetting('missed_after_minutes', '15'));
 
