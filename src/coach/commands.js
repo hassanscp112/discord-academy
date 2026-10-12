@@ -1,14 +1,18 @@
 // Slash commands + button routing for the Coach.
 import {
-  SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
-  ChannelType, PermissionFlagsBits,
+  SlashCommandBuilder, ContextMenuCommandBuilder, ApplicationCommandType, EmbedBuilder,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle,
+  ChannelType, PermissionFlagsBits, ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder,
 } from 'discord.js';
+import { postBookPdf, fetchBookPdf, deletePdfThread } from './pdflib.js';
+import { publishFromMessage, pdfAttachmentOf } from './uploads.js';
 import * as A from '../core/academy.js';
 import { getSetting, setSetting } from '../core/db.js';
 import { zonedToUtc, fmtInTz } from '../core/time.js';
 import { config } from '../core/config.js';
 import { templates } from '../core/templates.js';
 import { finishSession, proposeSlot } from './sessions.js';
+import { markMemberDirty, memberDashPayload } from './memberdash.js';
 import { stopStream } from './streamer.js';
 import { announceLevelUp } from './gamification.js';
 import { refreshDashboard, markDashboardDirty } from './dashboard.js';
@@ -46,7 +50,27 @@ export const commandDefs = [
     .addBooleanOption(o => o.setName('full').setDescription('Include inactive members (admin view)')),
   new SlashCommandBuilder().setName('quest').setDescription('Show the academy checklist')
     .addSubcommand(sc => sc.setName('list').setDescription('List checklist items')),
+  new SlashCommandBuilder().setName('books').setDescription('📚 كتبي — تقدم القراءة'),
+  new SlashCommandBuilder().setName('group').setDescription('📚 مجموعات القراءة')
+    .addSubcommand(sc => sc.setName('list').setDescription('المجموعات النشطة'))
+    .addSubcommand(sc => sc.setName('join').setDescription('انضم لمجموعة')
+      .addIntegerOption(o => o.setName('id').setDescription('رقم المجموعة').setRequired(true)))
+    .addSubcommand(sc => sc.setName('page').setDescription('سجّل صفحتك في كتاب المجموعة')
+      .addIntegerOption(o => o.setName('id').setDescription('رقم المجموعة').setRequired(true))
+      .addIntegerOption(o => o.setName('page').setDescription('الصفحة التي وصلت إليها').setRequired(true)))
+    .addSubcommand(sc => sc.setName('leave').setDescription('خرج من مجموعة')
+      .addIntegerOption(o => o.setName('id').setDescription('رقم المجموعة').setRequired(true))),
+  new SlashCommandBuilder().setName('pdf').setDescription('📚 مكتبة PDF — نشر في فورم المكتبة (إدارة)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addSubcommand(sc => sc.setName('add').setDescription('أنزل PDF كتاب كمنشور في فورم المكتبة')
+      .addStringOption(o => o.setName('book').setDescription('عنوان الكتاب (موجود أو جديد)').setRequired(true))
+      .addAttachmentOption(o => o.setName('file').setDescription('ملف الـPDF').setRequired(true))
+      .addStringOption(o => o.setName('genre').setDescription('التصنيف (تاغ الفورم): عقيدة، فقه، حديث…'))
+      .addIntegerOption(o => o.setName('pages').setDescription('عدد الصفحات (إن كان كتاباً جديداً)')))
+    .addSubcommand(sc => sc.setName('remove').setDescription('فك ربط PDF عن كتاب وحذف منشوره')
+      .addStringOption(o => o.setName('book').setDescription('عنوان الكتاب').setRequired(true))),
   new SlashCommandBuilder().setName('optout').setDescription('Toggle check-in DMs on/off for you'),
+  new ContextMenuCommandBuilder().setName('📚 نشر في المكتبة').setType(ApplicationCommandType.Message),
 ];
 
 const e = (title, desc, color = 0x5865f2) => new EmbedBuilder().setTitle(title).setDescription(desc.slice(0, 4000)).setColor(color);
@@ -152,6 +176,7 @@ export async function handleCommand(interaction) {
   if (cmd === 'myprogress') {
     const u = interaction.user;
     A.upsertParticipant(u.id, u.username);
+    markMemberDirty(u.id); // ensures their private channel exists and is fresh
     const xp = A.xpTotal(u.id);
     const lvl = A.levelFor(xp);
     const done = A.listProgress(u.id);
@@ -159,10 +184,14 @@ export async function handleCommand(interaction) {
     const streak = A.currentStreak(u.id);
     const quests = A.listQuests().map(q =>
       `${QCAT[q.category] ?? '📜'} ${q.title}${A.questCompletedBy(q.id, u.id) ? ' — ✅' : ''}`);
+    const courses = A.listCourses().map(c => {
+      const cp = A.courseProgress(c.id, u.id);
+      return `📖 **${c.title}** — ${cp.done}/${cp.total}${cp.next ? ` · next: ${cp.next.title}` : ' · كملها كاملة 🎉'}`;
+    });
     return interaction.reply({
       embeds: [e(`📈 ${u.username}`, [
         `**${xp} XP** · ${lvl.emoji} **${lvl.name}** · 🔥 streak: **${streak}**`,
-        `Lessons: **${done.length}/${total}**`,
+        courses.length ? `\n${courses.join('\n')}` : `Lessons: **${done.length}/${total}**`,
         quests.length ? `\n**Checklist:**\n${quests.join('\n')}` : '',
       ].join('\n'))], ephemeral: true,
     });
@@ -189,6 +218,78 @@ export async function handleCommand(interaction) {
     }
   }
 
+  if (cmd === 'books') {
+    const shelf = A.bookShelf(interaction.user.id);
+    const reading = shelf.filter(b => b.page > 0 || b.finished);
+    const shown = reading.length ? reading : shelf.slice(0, 5);
+    const lines = shown.map(b =>
+      b.finished ? `✅ **${b.title}** — أكملته 🎉`
+      : b.page > 0 ? `📖 **${b.title}** — صفحة **${b.page}**/${b.total_pages}`
+      : `▫️ **${b.title}** — لم تبدأه بعد`);
+    return interaction.reply({
+      embeds: [e('📚 كتبي', lines.join('\n') || 'لا كتب في الأكاديمية بعد — اسأل عن مجموعات القراءة!')],
+      ephemeral: true,
+    });
+  }
+
+  if (cmd === 'group') {
+    const sub = opts.getSubcommand();
+    if (sub === 'list') {
+      const groups = A.listGroups();
+      if (!groups.length) return interaction.reply({ embeds: [e('📚 مجموعات القراءة', 'لا مجموعات نشطة الآن.')], ephemeral: true });
+      const lines = groups.map(g => `#${g.id} · **${g.title}** — كتاب: **${g.book_title}** (${g.total_pages} صفحة)`);
+      return interaction.reply({ embeds: [e('📚 مجموعات القراءة', lines.join('\n'))], ephemeral: true });
+    }
+    const gid = opts.getInteger('id', true);
+    const g = A.getGroup(gid);
+    if (!g || g.status !== 'active') return interaction.reply({ content: 'لا توجد مجموعة نشطة بهذا الرقم.', ephemeral: true });
+    if (sub === 'join') {
+      A.joinGroup(gid, interaction.user.id, interaction.member?.displayName ?? interaction.user.username);
+      markMemberDirty(interaction.user.id);
+      return interaction.reply({ content: `✅ انضممت إلى **${g.title}**! حدّث صفحتك بزر «📝 سجّل صفحتك» أو بـ \`/group page ${gid} <الصفحة>\`.`, ephemeral: true });
+    }
+    if (sub === 'page') {
+      const r = A.setBookProgress(interaction.user.id, g.book_id, opts.getInteger('page', true));
+      A.joinGroup(gid, interaction.user.id, interaction.member?.displayName ?? interaction.user.username);
+      markMemberDirty(interaction.user.id);
+      return interaction.reply({ content: r.finished ? `🎉 أكملت **${g.book_title}** كاملاً!` : `📖 سُجّل: صفحة **${r.page}** من ${g.total_pages} في **${g.book_title}**.`, ephemeral: true });
+    }
+    if (sub === 'leave') {
+      A.leaveGroup(gid, interaction.user.id);
+      return interaction.reply({ content: `خرجت من **${g.title}**.`, ephemeral: true });
+    }
+  }
+
+  if (cmd === 'pdf') {
+    if (!isAdmin(interaction)) return interaction.reply({ content: 'للإدارة فقط.', ephemeral: true });
+    const sub = opts.getSubcommand();
+    if (sub === 'add') {
+      await interaction.deferReply({ ephemeral: true });
+      const file = opts.getAttachment('file', true);
+      const genre = opts.getString('genre');
+      let book = A.findBookByTitle(opts.getString('book', true));
+      const isNew = !book;
+      if (isNew) book = A.getBook(A.addBook({ title: opts.getString('book', true), totalPages: opts.getInteger('pages') ?? 200 }));
+      try {
+        const buf = Buffer.from(await (await fetch(file.url)).arrayBuffer());
+        const r = await postBookPdf(interaction.client, book, buf, file.name, genre);
+        A.setBookPdf(book.id, { msgId: r.threadId, name: r.name, size: r.size, genre });
+        if (isNew) {
+          const { publishBook } = await import('./library.js');
+          await publishBook(interaction.client, A.getBook(book.id));
+        }
+        return interaction.editReply(`📄 نُشر **${book.title}** في فورم المكتبة${genre ? ` تحت «${genre}»` : ''} — والتحميل متاح للأعضاء من لوحاتهم ✓`);
+      } catch (e) { return interaction.editReply(`❌ ${e.message}`); }
+    }
+    if (sub === 'remove') {
+      const book = A.findBookByTitle(opts.getString('book', true));
+      if (!book?.pdf_msg_id) return interaction.reply({ content: 'لم أجد كتاباً بهذا العنوان وبملف PDF.', ephemeral: true });
+      await deletePdfThread(interaction.client, book);
+      A.clearBookPdf(book.id);
+      return interaction.reply({ content: `فُكّ ربط الملف عن **${book.title}** وحُذف منشوره من الفورم.`, ephemeral: true });
+    }
+  }
+
   if (cmd === 'optout') {
     const p = A.getParticipant(interaction.user.id);
     const nowDisabled = p ? !p.dms_enabled : true; // not enrolled -> opting in? default: enable DMs
@@ -209,6 +310,7 @@ export async function handleButton(interaction) {
     A.upsertParticipant(interaction.user.id, interaction.user.username);
     const before = A.xpTotal(interaction.user.id);
     const res = A.completeLesson(interaction.user.id, lessonId);
+    if (!res.already) markMemberDirty(interaction.user.id);
     if (res.already) return interaction.reply({ content: 'You already marked this lesson ✅', ephemeral: true });
     await announceLevelUp(interaction.client, interaction.user.id, before);
     const xp = A.xpTotal(interaction.user.id);
@@ -225,6 +327,7 @@ export async function handleButton(interaction) {
     if (action === 'check') {
       A.upsertParticipant(interaction.user.id, interaction.user.username);
       const done = A.checkQuest(parseInt(idStr, 10), interaction.user.id);
+      markMemberDirty(interaction.user.id);
       if (!done) return interaction.reply({ content: 'هذا العنصر لم يعد في القائمة.', ephemeral: true });
       if (!done.first) return interaction.reply({ content: 'سجّلته من قبل ✅', ephemeral: true });
       await interaction.channel?.send(templates.quest_done
@@ -251,7 +354,7 @@ export async function handleButton(interaction) {
     if (action === 'slots' && session.status === 'missed_poll') {
       if (!boss) return interaction.reply({ content: 'Only the academy owner can pick a custom time.', ephemeral: true });
       const after = new Date(session.scheduled_at);
-      const slots = [proposeSlot(after), ...[1, 2].map(d => new Date(after.getTime() + d * 86400000))];
+      const slots = [proposeSlot(after, session), ...[1, 2].map(d => new Date(after.getTime() + d * 86400000))];
       const row = new ActionRowBuilder().addComponents(slots.slice(0, 3).map(s =>
         new ButtonBuilder().setCustomId(`sess:set:${id}:${s.toISOString()}`).setLabel(fmtInTz(s, config.tz)).setStyle(ButtonStyle.Secondary)));
       return interaction.reply({ content: 'Pick a new time:', components: [row], ephemeral: true });
@@ -277,5 +380,205 @@ export async function handleButton(interaction) {
       return interaction.editReply({ content: '✅ Session finished — attendees got their XP.' });
     }
   }
+
+  if (kind === 'grp') {
+    const gid = parseInt(idStr, 10);
+    const g = A.getGroup(gid);
+    if (!g || g.status !== 'active') return interaction.reply({ content: 'هذه المجموعة لم تعد نشطة.', ephemeral: true });
+    if (action === 'join') {
+      A.joinGroup(gid, interaction.user.id, interaction.member?.displayName ?? interaction.user.username);
+      markMemberDirty(interaction.user.id);
+      return interaction.reply({ content: `✅ انضممت إلى **${g.title}**! حدّث صفحتك من زر «📝 سجّل صفحتك» في رسالة المجموعة.`, ephemeral: true });
+    }
+    if (action === 'page') {
+      const modal = new ModalBuilder()
+        .setCustomId(`grp:modal:${gid}`)
+        .setTitle(`تقدمك في: ${g.book_title}`.slice(0, 45));
+      modal.addComponents(new ActionRowBuilder().addComponents(
+        new TextInputBuilder().setCustomId('page').setLabel('وصلت إلى صفحة…').setStyle(TextInputStyle.Short).setRequired(true),
+      ));
+      return interaction.showModal(modal);
+    }
+  }
+
+  // member dashboard tabs + actions (in the private progress channels)
+  // NOTE: mview/mcomplete/bkpage customIds are TWO-segment — the id lives in `action`
+  if (kind === 'mview') {
+    await interaction.deferUpdate(); // card rendering may take a moment
+    const view = await memberDashPayload(interaction.user.id, action);
+    if (!view) return interaction.editReply({ content: 'صفحة غير معروفة.' });
+    return interaction.editReply(view);
+  }
+  if (kind === 'mcomplete') {
+    const cp = A.courseProgress(parseInt(action, 10), interaction.user.id);
+    if (!cp.next) return interaction.reply({ content: 'أكملت كل دروس هذه الدورة 🎉', ephemeral: true });
+    const res = A.completeLesson(interaction.user.id, cp.next.lesson_id);
+    markMemberDirty(interaction.user.id);
+    if (!res.already) await announceLevelUp(interaction.client, interaction.user.id, res.total - (res.granted ?? 0));
+    await interaction.deferUpdate();
+    await interaction.editReply(await memberDashPayload(interaction.user.id, 'courses'));
+    return interaction.followUp({
+      content: res.already ? 'هذا الدرس مسجل من قبل ✅' : `✅ سُجّل إنجاز **${cp.next.title}** (+${res.granted} XP)`,
+      ephemeral: true,
+    });
+  }
+  if (kind === 'bkpage') {
+    const book = A.getBook(parseInt(action, 10));
+    if (!book) return interaction.reply({ content: 'الكتاب غير موجود.', ephemeral: true });
+    const modal = new ModalBuilder()
+      .setCustomId(`bk:modal:${book.id}`)
+      .setTitle(`تقدمك في: ${book.title}`.slice(0, 45));
+    modal.addComponents(new ActionRowBuilder().addComponents(
+      new TextInputBuilder().setCustomId('page').setLabel('وصلت إلى صفحة…').setStyle(TextInputStyle.Short).setRequired(true),
+    ));
+    return interaction.showModal(modal);
+  }
+
+  // per-course notification opt-in (member dashboard «الإشعارات» tab)
+  if (kind === 'sub') {
+    const course = A.getCourse(parseInt(action, 10));
+    if (!course) return interaction.reply({ content: 'الدورة غير موجودة.', ephemeral: true });
+    const on = A.toggleCourseSub(course.id, interaction.user.id, interaction.member?.displayName ?? interaction.user.username);
+    await interaction.deferUpdate();
+    await interaction.editReply(await memberDashPayload(interaction.user.id, 'subs'));
+    return interaction.followUp({
+      content: on ? `🔔 ستُشعَر بحصص **${course.title}**.` : `🔕 أوقفت إشعار **${course.title}**.`,
+      ephemeral: true,
+    });
+  }
+
+  // quiz answers (questions posted after class)
+  if (kind === 'quiz') {
+    const r = A.answerQuestion(interaction.user.id, parseInt(action, 10), parseInt(idStr, 10));
+    if (!r) return interaction.reply({ content: 'هذا السؤال لم يعد متاحاً.', ephemeral: true });
+    if (r.already) return interaction.reply({ content: 'أجبت على هذا السؤال من قبل 🙂', ephemeral: true });
+    if (r.correct) {
+      const before = A.xpTotal(interaction.user.id);
+      A.awardXp(interaction.user.id, r.question.xp, 'quiz');
+      markMemberDirty(interaction.user.id);
+      await announceLevelUp(interaction.client, interaction.user.id, before);
+      return interaction.reply({ content: `✅ إجابة صحيحة! +${r.question.xp} نقطة`, ephemeral: true });
+    }
+    return interaction.reply({ content: '❌ ليست الإجابة الصحيحة — راجع الدرس وحاول التركيز في الحصة القادمة!', ephemeral: true });
+  }
+
+  // mods upload flow: panel button -> modal (pdfup:btn:<sourceMsgId>)
+  if (kind === 'pdfup' && action === 'btn') {
+    if (!isAdmin(interaction)) return interaction.reply({ content: 'للإدارة فقط.', ephemeral: true });
+    const src = await interaction.channel?.messages?.fetch(idStr).catch(() => null);
+    const att = pdfAttachmentOf(src);
+    if (!att) return interaction.reply({ content: 'لم أجد الملف الأصلي — أعد رفعه.', ephemeral: true });
+    return openUploadModal(interaction, idStr, att.name);
+  }
+
+  // onboarding guide button — points the member at their private board
+  if (kind === 'onboard') {
+    const p = A.getParticipant(interaction.user.id);
+    if (p?.private_channel_id) {
+      return interaction.reply({ content: `📊 لوحتك هنا: <#${p.private_channel_id}> — تفضل!`, ephemeral: true });
+    }
+    return interaction.reply({
+      content: '🎧 لوحتك الخاصة تُنشأ تلقائياً من أول حضور لحصة أو أول إنجاز — نراك في الحصة القادمة!',
+      ephemeral: true,
+    });
+  }
+
+  if (kind === 'mnoop') return interaction.deferUpdate();
+
   return interaction.reply({ content: 'Unknown button.', ephemeral: true });
+}
+
+// right-click a message with a PDF -> publish flow (same modal as the upload channel)
+export async function handleContextMenu(interaction) {
+  if (interaction.commandName !== '📚 نشر في المكتبة') {
+    return interaction.reply({ content: 'Unknown command.', ephemeral: true });
+  }
+  if (!isAdmin(interaction)) return interaction.reply({ content: 'للإدارة فقط.', ephemeral: true });
+  const att = pdfAttachmentOf(interaction.targetMessage);
+  if (!att) return interaction.reply({ content: 'لا يوجد ملف PDF في هذه الرسالة.', ephemeral: true });
+  await openUploadModal(interaction, interaction.targetMessage.id, att.name);
+}
+
+// the title/pages/category form shared by both entry points
+async function openUploadModal(interaction, sourceMsgId, fileName) {
+  const baseName = fileName.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').trim();
+  const modal = new ModalBuilder()
+    .setCustomId(`pdfup:modal:${sourceMsgId}`)
+    .setTitle('نشر الكتاب في المكتبة'.slice(0, 45));
+  modal.addComponents(
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder().setCustomId('title').setLabel('عنوان الكتاب')
+        .setStyle(TextInputStyle.Short).setRequired(true).setValue(baseName.slice(0, 100))),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder().setCustomId('pages').setLabel('عدد الصفحات')
+        .setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('مثال: 640')),
+    new ActionRowBuilder().addComponents(
+      new TextInputBuilder().setCustomId('genre').setLabel('التصنيف (تاغ الفورم)')
+        .setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder('عقيدة / فقه / حديث…')),
+  );
+  return interaction.showModal(modal);
+}
+
+// select menus — the PDF download menu in member channels
+export async function handleSelect(interaction) {
+  const kind = interaction.customId.split(':')[0];
+  if (kind === 'pdfget') {
+    const book = A.getBook(Number(interaction.values?.[0]));
+    if (!book?.pdf_msg_id) return interaction.reply({ content: 'هذا الكتاب بلا ملف PDF.', ephemeral: true });
+    await interaction.deferReply();
+    const pdf = await fetchBookPdf(interaction.client, book);
+    if (!pdf) return interaction.editReply('تعذّر جلب الملف — ربما حُذف منشوره من الفورم. أخبر الإدارة.');
+    return interaction.editReply({
+      content: `📖 **${book.title}** — تفضل ملفك:`,
+      files: [new AttachmentBuilder(pdf.buffer, { name: pdf.name })],
+    });
+  }
+  return interaction.reply({ content: 'Unknown menu.', ephemeral: true });
+}
+
+// modal submits — reading-group + personal book page inputs live here
+export async function handleModal(interaction) {
+  const [kind, , idStr] = interaction.customId.split(':');
+  if (kind === 'grp') {
+    const gid = parseInt(idStr, 10);
+    const g = A.getGroup(gid);
+    if (!g || g.status !== 'active') return interaction.reply({ content: 'هذه المجموعة لم تعد نشطة.', ephemeral: true });
+    const page = parseInt(interaction.fields.getTextInputValue('page'), 10);
+    if (!Number.isFinite(page) || page < 0) return interaction.reply({ content: 'أدخل رقم صفحة صالحاً.', ephemeral: true });
+    const r = A.setBookProgress(interaction.user.id, g.book_id, page);
+    A.joinGroup(gid, interaction.user.id, interaction.member?.displayName ?? interaction.user.username);
+    markMemberDirty(interaction.user.id);
+    return interaction.reply({
+      content: r.finished ? `🎉 أكملت **${g.book_title}** كاملاً!` : `📖 سُجّل: صفحة **${r.page}** من ${g.total_pages} في **${g.book_title}**.`,
+      ephemeral: true,
+    });
+  }
+  if (kind === 'bk') {
+    const book = A.getBook(parseInt(idStr, 10));
+    if (!book) return interaction.reply({ content: 'الكتاب غير موجود.', ephemeral: true });
+    const page = parseInt(interaction.fields.getTextInputValue('page'), 10);
+    if (!Number.isFinite(page) || page < 0) return interaction.reply({ content: 'أدخل رقم صفحة صالحاً.', ephemeral: true });
+    const r = A.setBookProgress(interaction.user.id, book.id, page);
+    markMemberDirty(interaction.user.id);
+    return interaction.reply({
+      content: r.finished ? `🎉 أكملت **${book.title}** كاملاً!` : `📖 سُجّل: صفحة **${r.page}** من ${book.total_pages} في **${book.title}**.`,
+      ephemeral: true,
+    });
+  }
+  if (kind === 'pdfup') {
+    // pdfup:modal:<sourceMsgId> — publish the book from the original message
+    if (!isAdmin(interaction)) return interaction.reply({ content: 'للإدارة فقط.', ephemeral: true });
+    await interaction.deferReply({ ephemeral: true });
+    const src = await interaction.channel?.messages?.fetch(idStr).catch(() => null);
+    if (!src) return interaction.editReply('لم أجد الرسالة الأصلية.');
+    const title = interaction.fields.getTextInputValue('title')?.trim();
+    const pages = parseInt(interaction.fields.getTextInputValue('pages'), 10);
+    const genre = interaction.fields.getTextInputValue('genre')?.trim();
+    if (!title || !Number.isFinite(pages) || pages <= 0) return interaction.editReply('أكمل العنوان وعدد صفحات صحيحاً.');
+    try {
+      const r = await publishFromMessage(interaction.client, { message: src, title, pages, genre });
+      return interaction.editReply(`✅ نُشر **${r.book.title}**${genre ? ` تحت «${genre}»` : ''} في فورم المكتبة${r.isNew ? ' وأُضيف للمكتبة' : ''} — متاح للتحميل من لوحات الأعضاء.`);
+    } catch (e) { return interaction.editReply(`❌ ${e.message}`); }
+  }
+  return interaction.reply({ content: 'Unknown form.', ephemeral: true });
 }

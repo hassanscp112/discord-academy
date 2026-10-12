@@ -158,6 +158,31 @@ td.actions{white-space:nowrap}
 #live-banner .title{font-size:17px;font-weight:800}
 #live-banner .sub{color:var(--text-2);font-size:13px;margin-top:3px}
 
+/* player bar (RTL page, LTR controls) */
+#player-bar{
+  display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  background:var(--ink-0);border:1px solid var(--line-2);border-radius:10px;padding:7px 10px;
+}
+.pbtn{
+  display:inline-flex;align-items:center;justify-content:center;gap:2px;
+  background:transparent;border:1px solid transparent;border-radius:7px;cursor:pointer;
+  color:var(--text-2);padding:7px 9px;transition:color .15s,background .15s,border-color .15s;
+}
+.pbtn svg{width:16px;height:16px}
+.pbtn .pnum{font-size:10.5px;font-weight:800;letter-spacing:-.3px}
+.pbtn:hover{color:var(--text);background:var(--ink-3)}
+.pbtn.big{
+  background:var(--amber);color:var(--amber-ink);border-radius:8px;
+  width:42px;height:38px;flex-shrink:0;
+}
+.pbtn.big:hover{background:var(--amber-hi)}
+.pb-time{
+  font-size:13.5px;font-weight:700;color:var(--text-2);
+  font-variant-numeric:tabular-nums;min-width:120px;text-align:center;
+  white-space:nowrap;
+}
+#pb-vol{width:92px;accent-color:var(--amber);padding:0;height:4px;cursor:pointer}
+
 /* countdown */
 .cd{display:flex;gap:6px;align-items:baseline;margin-top:6px}
 .cd b{font-size:26px;font-weight:800;color:var(--amber);line-height:1}
@@ -177,6 +202,24 @@ td.actions{white-space:nowrap}
   background:var(--ink-3);color:var(--text-2);
 }
 tr.r1 .rank{background:var(--amber);color:var(--amber-ink)}
+
+/* ---------- courses grid ---------- */
+.courses-grid{
+  display:grid;gap:12px;
+  grid-template-columns:repeat(auto-fill,minmax(270px,1fr));
+}
+.course-card{
+  display:block;background:var(--ink-2);border:1px solid var(--line);
+  border-radius:10px;padding:15px 16px;text-decoration:none;color:var(--text);
+  transition:border-color .15s,background .15s,transform .15s;
+}
+.course-card:hover{border-color:var(--line-2);background:var(--ink-3);transform:translateY(-1px)}
+.course-card .cc-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.course-card h3{font-size:15.5px;font-weight:800;margin:0}
+.course-card .cc-head svg{width:17px;height:17px;color:var(--text-3);flex-shrink:0}
+.cc-cadence{color:var(--amber);font-size:13px;font-weight:700;margin-top:5px}
+.cc-meta{margin-top:4px;font-size:12.5px}
+.cc-next{margin-top:6px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* ---------- member drawer ---------- */
 #drawer{
@@ -204,6 +247,27 @@ tr.r1 .rank{background:var(--amber);color:var(--amber-ink)}
 .tl-item b{font-size:13.5px;font-weight:700;display:block}
 .tl-item .vdim{margin-top:1px}
 .tl-when{margin-inline-start:auto;color:var(--text-3);font-size:12px;white-space:nowrap}
+
+/* ---------- per-course member checklist ---------- */
+.ck-wrap{margin-top:16px;display:flex;flex-direction:column;gap:14px}
+.ck-course{
+  background:var(--ink-0);border:1px solid var(--line);border-radius:10px;
+  padding:12px 14px;
+}
+.ck-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.ck-head b{font-size:14px}
+.ck-head .dim{font-size:12.5px}
+.ck-list{margin-top:10px;max-height:230px;overflow-y:auto;display:flex;flex-direction:column}
+.ck-item{
+  display:flex;align-items:center;gap:8px;padding:6px 4px;
+  border-bottom:1px solid var(--line);font-size:13.5px;
+}
+.ck-item:last-child{border-bottom:none}
+.ck-item .ck-mark{flex-shrink:0}
+.ck-item .ck-pos{color:var(--text-3);font-size:11.5px;min-width:16px;text-align:center;flex-shrink:0}
+.ck-item .ck-title{flex:1;min-width:0;color:var(--text-2)}
+.ck-item.done .ck-title{color:var(--text);text-decoration:line-through;text-decoration-color:var(--text-3)}
+.ck-item .ck-when{color:var(--text-3);font-size:11.5px;white-space:nowrap;flex-shrink:0}
 
 /* ---------- toast ---------- */
 #toast{

@@ -4,12 +4,12 @@
 export const templates = {
   reminder:
     '📚 **Class in {{when}}!**\n' +
-    'We\'re covering **{{lesson_title}}**\n' +
+    'We\'re covering **{{lesson_title}}**{{part_line}}\n' +
     '{{url_line}}\n' +
     '{{ping}} See you in 🔊 {{vc_name}}!',
 
   starting:
-    '🎬 **Class is starting NOW!** — **{{lesson_title}}**\n' +
+    '🎬 **Class is starting NOW!** — **{{lesson_title}}**{{part_line}}\n' +
     '{{url_line}}\n' +
     '{{ping}} I\'m in 🔊 {{vc_name}} playing the lesson audio.\n' +
     '📺 **Want synced video?** Tap the 🚀 rocket in the voice channel → **Watch Together** → paste the link above.',
@@ -24,7 +24,7 @@ export const templates = {
     '📆 The poll expired, so **{{lesson_title}}** was moved to **{{when}}** automatically.',
 
   session_done:
-    '✅ **Session done** — nice work everyone who joined **{{lesson_title}}**!\n' +
+    '✅ **Session done** — nice work everyone who joined **{{lesson_title}}**!{{part_line}}\n' +
     'Attendees earned **{{xp}} XP**. Don\'t forget to mark the lesson finished:',
 
   completion_thanks:
@@ -46,6 +46,13 @@ export const templates = {
 
   quest_done:
     '🏅 {{mention}} أنجز: **{{title}}**!',
+
+  group_new:
+    '📚 **مجموعة قراءة جديدة:** **{{title}}** ({{pages}} صفحة)\n' +
+    'اقرأ معنا وشارك تقدمك — من وصل لصفحة كم؟',
+
+  group_progress_line:
+    '{{mark}} **{{name}}** — صفحة **{{page}}/{{pages}}**{{pct}}',
 
   recap:
     '📋 **Weekly recap**\n' +

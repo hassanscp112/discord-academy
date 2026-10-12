@@ -29,6 +29,7 @@ const DEFAULT_SETTINGS = {
   nudge_cooldown_hours: '48',
   recap_day: '0',
   recap_hour: '21',
+  health_hour: '9',
   reminder_minutes_before: '30',
   missed_after_minutes: '15',
   dashboard_refresh_minutes: '5',
@@ -118,6 +119,108 @@ export function getDb(path = config.dbPath) {
   `);
   // v2 quests: checklist items (book/lecture/course) — no XP, no lessons, no expiry
   try { db.exec("ALTER TABLE quests ADD COLUMN category TEXT NOT NULL DEFAULT 'lecture'"); } catch {}
+  // v3 long videos: real video metadata on lessons, per-session start offset
+  // (a 2h video with 60-min classes becomes 2 sessions, the 2nd offset 60min)
+  try { db.exec('ALTER TABLE lessons ADD COLUMN video_id TEXT'); } catch {}
+  try { db.exec('ALTER TABLE lessons ADD COLUMN video_duration_sec INTEGER'); } catch {}
+  try { db.exec('ALTER TABLE sessions ADD COLUMN offset_min INTEGER NOT NULL DEFAULT 0'); } catch {}
+  // v4 multi-course: each course owns its lessons and its own schedule cadence
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS courses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      position INTEGER NOT NULL DEFAULT 0,
+      mode TEXT NOT NULL DEFAULT 'days',
+      days TEXT NOT NULL DEFAULT '',
+      every_n INTEGER NOT NULL DEFAULT 2,
+      time TEXT NOT NULL DEFAULT '21:00',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);
+  try { db.exec('ALTER TABLE lessons ADD COLUMN course_id INTEGER NOT NULL DEFAULT 0'); } catch {}
+  // v5 member dashboards: each participant's private progress channel
+  try { db.exec('ALTER TABLE participants ADD COLUMN private_channel_id TEXT'); } catch {}
+  // v6 books + study groups: page-level reading progress and shared reading
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS books (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      total_pages INTEGER NOT NULL DEFAULT 100,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS book_progress (
+      book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      page INTEGER NOT NULL DEFAULT 0,
+      finished INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (book_id, user_id)
+    );
+    CREATE TABLE IF NOT EXISTS study_groups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL DEFAULT '',
+      book_id INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS study_group_members (
+      group_id INTEGER NOT NULL REFERENCES study_groups(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      joined_at TEXT NOT NULL,
+      PRIMARY KEY (group_id, user_id)
+    );
+  `);
+  // v8 member library: each book gets a browsable card in a public channel
+  try { db.exec('ALTER TABLE books ADD COLUMN library_msg_id TEXT'); } catch {}
+  // v9 PDF library: books carry a PDF posted as a thread in the sharia forum
+  try { db.exec('ALTER TABLE books ADD COLUMN pdf_msg_id TEXT'); } catch {}
+  try { db.exec('ALTER TABLE books ADD COLUMN pdf_name TEXT'); } catch {}
+  try { db.exec('ALTER TABLE books ADD COLUMN pdf_size INTEGER'); } catch {}
+  try { db.exec('ALTER TABLE books ADD COLUMN genre TEXT'); } catch {}
+  // v7 per-course notification opt-in + quiz questions
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS course_subs (
+      course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      joined_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (course_id, user_id)
+    );
+    CREATE TABLE IF NOT EXISTS questions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+      lesson_id INTEGER REFERENCES lessons(id) ON DELETE CASCADE,
+      question TEXT NOT NULL,
+      options_json TEXT NOT NULL,
+      correct_index INTEGER NOT NULL DEFAULT 0,
+      xp INTEGER NOT NULL DEFAULT 10,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS question_answers (
+      question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      correct INTEGER NOT NULL,
+      answered_at TEXT NOT NULL,
+      PRIMARY KEY (question_id, user_id)
+    );
+  `);
+  if (db.prepare('SELECT COUNT(*) AS c FROM courses').get().c === 0) {
+    // first boot on v4: one course holding all existing lessons, inheriting
+    // the old global cadence (weekly_template_json) when one was saved
+    let mode = 'days', days = '', everyN = 2, time = '21:00';
+    try {
+      const row = db.prepare("SELECT value FROM settings WHERE key = 'weekly_template_json'").get();
+      const raw = row ? JSON.parse(row.value) : null;
+      if (raw && typeof raw === 'object') {
+        mode = raw.mode || 'days';
+        days = Array.isArray(raw.days) ? raw.days.join(',') : '';
+        everyN = raw.everyN || 2;
+        time = raw.time || '21:00';
+      }
+    } catch {}
+    db.prepare('INSERT INTO courses (title, position, mode, days, every_n, time) VALUES (?, 1, ?, ?, ?, ?)')
+      .run('الدورة الأساسية', mode, days, everyN, time);
+  }
+  db.prepare('UPDATE lessons SET course_id = (SELECT MIN(id) FROM courses) WHERE course_id = 0').run();
   const ins = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
   for (const [k, v] of Object.entries(DEFAULT_SETTINGS)) ins.run(k, v);
   return db;

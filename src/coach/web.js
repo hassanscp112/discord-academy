@@ -8,17 +8,33 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as A from '../core/academy.js';
 import { getSetting, setSetting, allSettings, getDb } from '../core/db.js';
-import { fmtInTz, zonedToUtc } from '../core/time.js';
+import { fmtInTz, zonedToUtc, normalizeTemplate } from '../core/time.js';
 import { config } from '../core/config.js';
 import { applyPublish, currentRevision } from './publish.js';
 import { refreshDashboard, markDashboardDirty } from './dashboard.js';
-import { stopStream } from './streamer.js';
+import { stopStream, playerState, controlPlayer } from './streamer.js';
+import { fetchPlaylist, fetchVideoMeta } from './importer.js';
+import { publishBook, unpublishBook } from './library.js';
 import { startSessionNow, finishSession } from './sessions.js';
 import { templates } from '../core/templates.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const dashCookie = () => createHash('sha256').update(`academy:${config.dashPassword}`).digest('hex').slice(0, 32);
 const DAY_AR = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+const DAYS_MAP = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, 'الأحد': 0, 'الاحد': 0, 'الإثنين': 1, 'الاثنين': 1, 'الثلاثاء': 2, 'الأربعاء': 3, 'الاربعاء': 3, 'الخميس': 4, 'الجمعة': 5, 'السبت': 6 };
+const parseDaysStr = str => String(str ?? '').toLowerCase().split(',').map(d => DAYS_MAP[d.trim()]).filter(d => d !== undefined);
+const cadenceText = tpl => !tpl ? '—'
+  : tpl.mode === 'daily' ? 'يومياً'
+  : tpl.mode === 'interval' ? (tpl.everyN === 2 ? 'كل يومين' : `كل ${tpl.everyN} أيام`)
+  : tpl.days.map(d => DAY_AR[d]).join('،');
+// {mode, days?, everyN?, time?} from a JSON body (days may be a name string or int array)
+function cadenceFromBody(b) {
+  const time = String(b.time ?? '');
+  if (b.mode === 'daily') return { mode: 'daily', time };
+  if (b.mode === 'interval') return { mode: 'interval', everyN: Number(b.everyN), time };
+  const days = Array.isArray(b.days) ? b.days.map(Number) : parseDaysStr(b.days);
+  return { mode: 'days', days, time };
+}
 
 function memberTimeline(userId) {
   const db = getDb();
@@ -57,6 +73,7 @@ export function startWeb({ client = null, bus }) {
   app.get('/api/state', apiAuth, (_req, res) => {
     res.json({
       revision: currentRevision(), tz: config.tz, overview: A.overview(), lessons: A.listLessons(),
+      courses: A.listCourses().map(c => ({ ...c, lessons_total: A.listLessons(c.id).length })),
       sessions: A.listSessions({ future: true, limit: 200 }).map(s => ({ ...s, lesson_title: A.getLesson(s.lesson_id)?.title })),
       participants: A.listParticipants().map(p => ({
         ...p, xp: A.xpTotal(p.user_id), level: A.levelFor(A.xpTotal(p.user_id)),
@@ -83,7 +100,13 @@ export function startWeb({ client = null, bus }) {
       if (!id || !client) return '';
       try { return client.channels.cache.get(id)?.name ?? ''; } catch { return ''; }
     };
-    const lessons = A.listLessons().map(l => ({ ...l, done: l.status === 'done', session: A.sessionForLesson(l.id) ?? null }));
+    const lessons = A.listLessons().map(l => ({
+      ...l, done: l.status === 'done',
+      session: A.sessionForLesson(l.id) ?? null,
+      parts: A.lessonParts(l).parts,
+      video_sec: l.video_duration_sec ?? null,
+    }));
+    const sessPart = s => { const p = A.sessionPartInfo(s); return { part: p.part, parts: p.parts, from_min: p.fromMin, to_min: p.toMin }; };
     const participants = A.listParticipants().map(p => {
       const xp = A.xpTotal(p.user_id);
       const tl = memberTimeline(p.user_id);
@@ -94,22 +117,50 @@ export function startWeb({ client = null, bus }) {
         dms_enabled: !!p.dms_enabled, last_activity: tl[0]?.at ?? null,
       };
     });
-    const tpl = A.overview().template;
+    const tpl = normalizeTemplate(A.overview().template);
     const o = A.overview();
-    const live = A.listSessions({ future: true }).find(x => x.status === 'live') ?? null;
+    const allSessions = A.listSessions({ future: true, limit: 200 });
+    const courseOf = sid => {
+      const s = allSessions.find(x => x.id === sid);
+      return s ? A.getLesson(s.lesson_id)?.course_id ?? null : null;
+    };
+    const courses = A.listCourses().map(c => {
+      const ls = A.listLessons(c.id);
+      const next = o.courses.find(x => x.id === c.id)?.next_session ?? null;
+      return {
+        id: c.id, title: c.title, mode: c.template?.mode ?? null, time: c.time,
+        everyN: c.every_n, daysText: cadenceText(c.template),
+        lessons_total: ls.length,
+        lessons_done: ls.filter(l => l.status === 'done').length,
+        upcoming: allSessions.filter(s => courseOf(s.id) === c.id).length,
+        next_session: next ? { ...next, lesson_title: A.getLesson(next.lesson_id)?.title } : null,
+      };
+    });
+    const live = allSessions.find(x => x.status === 'live') ?? null;
     res.json({
       tz: config.tz,
       botOk: config.disableDiscord ? false : !!client?.isReady?.(),
+      courses,
       lessons,
-      sessions: A.listSessions({ future: true, limit: 50 }).map(x => ({ ...x, lesson_title: A.getLesson(x.lesson_id)?.title })),
+      sessions: A.listSessions({ future: true, limit: 50 }).map(x => ({
+        ...x, lesson_title: A.getLesson(x.lesson_id)?.title,
+        course_id: A.getLesson(x.lesson_id)?.course_id ?? null, ...sessPart(x) })),
       participants,
       quests: A.listQuests().map(q => ({ id: q.id, title: q.title, category: q.category, done: A.questCompletionCount(q.id) })),
+      books: A.bookStats(),
+      groups: A.listGroups().map(g => A.groupRoster(g.id)),
+      questions: A.listQuestions().map(q => ({
+        id: q.id, course_id: q.course_id, lesson_id: q.lesson_id, question: q.question,
+        options: q.options, correct_index: q.correct_index, xp: q.xp,
+        answers: getDb().prepare('SELECT COUNT(*) AS c FROM question_answers WHERE question_id = ?').get(q.id).c,
+      })),
       settings: { ...s, channel_dashboard_name: channelName(s.channel_dashboard), study_vc_name: channelName(s.study_vc) },
       overview: { lessonsDone: o.lessons_done, lessonsTotal: o.lessons_total },
-      template: tpl ? { ...tpl, daysText: tpl.days.map(d => DAY_AR[d]).join(',') } : null,
+      template: tpl ? { ...tpl, daysText: cadenceText(tpl) } : null,
       live: live ? {
         id: live.id, lesson_title: A.getLesson(live.lesson_id)?.title,
         scheduled_at: live.scheduled_at, attendees: A.sessionAttendance(live.id).length,
+        ...sessPart(live),
       } : null,
       nextSession: o.next_session,
     });
@@ -124,17 +175,115 @@ export function startWeb({ client = null, bus }) {
       level: A.levelFor(xp), streak: A.currentStreak(p.user_id),
       lessons_done: A.listProgress(p.user_id).length,
       dms_enabled: !!p.dms_enabled,
+      courses: A.listCourses().map(c => {
+        const cp = A.courseProgress(c.id, p.user_id);
+        return {
+          id: c.id, title: c.title, done: cp.done, total: cp.total,
+          next: cp.next ? { title: cp.next.title } : null,
+          items: cp.items,
+        };
+      }),
+      books: A.bookShelf(p.user_id).filter(b => b.page > 0 || b.finished),
       timeline: memberTimeline(p.user_id),
     });
+  });
+
+  // every member's standing in one course (checklist roster)
+  app.get('/api/dash/course/:id/progress', dashAuth, (req, res) => {
+    if (!A.getCourse(+req.params.id)) return res.status(404).json({ error: 'الدورة غير موجودة' });
+    res.json({ roster: A.courseRoster(+req.params.id) });
   });
 
   const ok = (res, message) => { markDashboardDirty(); refreshDashboard(client, { force: true }).catch(() => {}); return res.json({ ok: true, message }); };
 
   app.post('/api/dash/lesson/add', dashAuth, async (req, res) => {
-    const { title, url = '', durationMin = 60 } = req.body ?? {};
+    const { title, url = '', durationMin = 60, courseId = null } = req.body ?? {};
     if (!title?.trim()) return res.status(400).json({ error: 'العنوان مطلوب' });
-    A.addLesson({ title: title.trim(), url: url.trim(), durationMin: +durationMin || 60 });
-    ok(res, 'أُضيف الدرس ✓');
+    // best effort: read the real video length so long videos auto-split
+    let videoId = null, videoSec = null;
+    if (url.trim()) {
+      try { const meta = await fetchVideoMeta(url.trim()); videoId = meta.videoId; videoSec = meta.durationSec; } catch {}
+    }
+    A.addLesson({ title: title.trim(), url: url.trim(), durationMin: +durationMin || 60, videoId, videoDurationSec: videoSec, courseId: courseId ?? null });
+    const parts = videoSec ? Math.ceil(videoSec / (Math.max(10, +durationMin || 60) * 60)) : 1;
+    ok(res, videoSec
+      ? `أُضيف الدرس — طوله ${Math.round(videoSec / 60)} دقيقة${parts > 1 ? ` ويُقسَّم تلقائياً إلى ${parts} حصص` : ''} ✓`
+      : 'أُضيف الدرس ✓');
+  });
+
+  // ---------- courses: each with its own lessons + its own cadence ----------
+  app.post('/api/dash/course/add', dashAuth, async (req, res) => {
+    const b = req.body ?? {};
+    if (!b.title?.trim()) return res.status(400).json({ error: 'اكتب عنوان الدورة' });
+    let id;
+    try { id = A.createCourse({ title: b.title.trim(), ...cadenceFromBody(b) }); }
+    catch (e) { return res.status(400).json({ error: e.message }); }
+    let added = 0, skipped = 0;
+    if (/^https?:\/\//i.test(String(b.playlistUrl ?? '').trim())) {
+      try {
+        const pl = await fetchPlaylist(String(b.playlistUrl).trim());
+        const imp = A.importPlaylist(pl.entries, { durationMin: Math.max(10, +b.durationMin || 60), courseId: id });
+        added = imp.added.length; skipped = imp.skipped;
+        if (added && client) {
+          const ch = await client.channels.fetch(getSetting('channel_dashboard')).catch(() => null);
+          if (ch) await ch.send(`📚 دورة جديدة **«${b.title.trim()}»** — أُضيف **${added}** درساً من قائمة «${pl.title ?? 'التشغيل'}»${skipped ? ` (${skipped} موجود مسبقاً)` : ''}.`).catch(() => null);
+        }
+      } catch (e) {
+        return ok(res, `أُنشئت الدورة «${b.title.trim()}» لكن تعذّر استيراد القائمة: ${e.message}`);
+      }
+    }
+    let scheduled = 0;
+    if (b.generate !== false) {
+      try { scheduled = A.generateScheduleForCourse(id, {}).length; } catch {}
+    }
+    ok(res, `أُنشئت الدورة «${b.title.trim()}»${added ? ` مع ${added} درساً` : ''}${scheduled ? ` وجُدولت ${scheduled} حصة` : ''} ✓`);
+  });
+
+  app.post('/api/dash/course/update', dashAuth, (req, res) => {
+    const b = req.body ?? {};
+    if (!b.id) return res.status(400).json({ error: 'أي دورة؟ (id)' });
+    const patch = {};
+    if (b.title != null) patch.title = b.title;
+    if (b.mode != null) Object.assign(patch, cadenceFromBody(b));
+    else if (b.days != null || b.everyN != null || b.time != null) Object.assign(patch, cadenceFromBody({ ...b, mode: b.mode ?? 'days' }));
+    try {
+      if (!A.updateCourse(+b.id, patch)) return res.status(404).json({ error: 'الدورة غير موجودة' });
+    } catch (e) { return res.status(400).json({ error: e.message }); }
+    ok(res, 'حُفظ ✓');
+  });
+
+  app.post('/api/dash/course/remove', dashAuth, (req, res) => {
+    try {
+      if (!A.removeCourse(+(req.body?.id))) return res.status(404).json({ error: 'الدورة غير موجودة' });
+    } catch (e) { return res.status(400).json({ error: e.message }); }
+    stopStream();
+    ok(res, 'حُذفت الدورة بدروسها ومواعيدها ✓');
+  });
+
+  app.post('/api/dash/course/generate', dashAuth, async (req, res) => {
+    try {
+      const created = A.generateScheduleForCourse(+(req.body?.id), {});
+      ok(res, created.length ? `جُدولت ${created.length} حصة للدورة ✓` : 'لا شيء جديد للجدولة — أضف دروساً أو كل الدروس لها حصص بالفعل');
+    } catch (e) { res.status(400).json({ error: e.message }); }
+  });
+
+  // YouTube playlist -> ordered lessons of one course (deduped), real durations
+  app.post('/api/dash/playlist/import', dashAuth, async (req, res) => {
+    const { url, durationMin = 60, courseId = null } = req.body ?? {};
+    if (!/^https?:\/\//i.test(String(url ?? '').trim()))
+      return res.status(400).json({ error: 'الصق رابط قائمة تشغيل يوتيوب صالحاً' });
+    try {
+      const pl = await fetchPlaylist(String(url).trim());
+      const { added, skipped } = A.importPlaylist(pl.entries, { durationMin: Math.max(10, +durationMin || 60), courseId: courseId ?? null });
+      if (added.length && client) {
+        const ch = await client.channels.fetch(getSetting('channel_dashboard')).catch(() => null);
+        if (ch) await ch.send(`📚 أُضيف **${added.length}** درساً جديداً من قائمة «${pl.title ?? 'التشغيل'}»${skipped ? ` (${skipped} موجود مسبقاً)` : ''}.`)
+          .catch(() => null);
+      }
+      ok(res, `أُضيف ${added.length} درساً من القائمة${skipped ? ` وتُجاهل ${skipped} موجوداً مسبقاً` : ''} — «جدولة تلقائية» توزّعها الآن ✓`);
+    } catch (e) {
+      res.status(502).json({ error: 'تعذّر قراءة القائمة: ' + (e.message || 'خطأ غير متوقع') });
+    }
   });
   app.post('/api/dash/lesson/update', dashAuth, async (req, res) => {
     const { id, title, url, durationMin } = req.body ?? {};
@@ -150,7 +299,10 @@ export function startWeb({ client = null, bus }) {
   });
   app.post('/api/dash/lesson/move', dashAuth, (req, res) => {
     const { id, dir } = req.body ?? {};
-    const ids = A.listLessons().map(x => x.id);
+    const l = A.getLesson(+id);
+    if (!l) return res.status(404).json({ error: 'الدرس غير موجود' });
+    // reorder inside the lesson's own course only
+    const ids = A.listLessons(l.course_id).map(x => x.id);
     const i = ids.indexOf(+id); const j = i + (+dir);
     if (i >= 0 && j >= 0 && j < ids.length) { [ids[i], ids[j]] = [ids[j], ids[i]]; A.reorder(ids); }
     ok(res, 'تم الترتيب ✓');
@@ -167,12 +319,15 @@ export function startWeb({ client = null, bus }) {
     ok(res, 'أُلغيت الحصة ✓');
   });
   app.post('/api/dash/template', dashAuth, (req, res) => {
-    const map = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, 'الأحد': 0, 'الاحد': 0, 'الإثنين': 1, 'الاثنين': 1, 'الثلاثاء': 2, 'الأربعاء': 3, 'الاربعاء': 3, 'الخميس': 4, 'الجمعة': 5, 'السبت': 6 };
-    const days = String(req.body?.days ?? '').toLowerCase().split(',').map(d => map[d.trim()]).filter(d => d !== undefined);
-    const time = String(req.body?.time ?? '');
-    if (!days.length || !/^\d{2}:\d{2}$/.test(time)) return res.status(400).json({ error: 'أيام أو وقت غير صالح (مثال: الأحد,الأربعاء + 20:00)' });
-    A.setTemplate({ days, time });
-    ok(res, 'حُفظ القالب ✓');
+    // legacy single-course endpoint — applies to the FIRST course
+    const first = A.listCourses()[0];
+    if (!first) return res.status(404).json({ error: 'لا توجد دورات' });
+    try {
+      A.updateCourse(first.id, cadenceFromBody(req.body ?? {}));
+    } catch (e) { return res.status(400).json({ error: 'إعدادات غير صالحة — الأيام/التكرار/الوقت (مثال: الأحد,الأربعاء + 20:00)' }); }
+    const course = A.getCourse(first.id); // reflects the new cadence
+    if (course.template) A.setTemplate(course.template); // keep the legacy global setting in sync
+    ok(res, 'حُفظ الإيقاع ✓');
   });
   app.post('/api/dash/generate', dashAuth, async (req, res) => {
     try {
@@ -219,6 +374,109 @@ export function startWeb({ client = null, bus }) {
     if (!live) return res.status(409).json({ error: 'لا توجد حصة مباشرة' });
     const r = await finishSession({ client, bus, sessionId: live.id });
     ok(res, r ? 'انتهت الحصة وصُرفت النقاط ✓' : 'تعذر الإنهاء');
+  });
+
+  // ---------- live player control (pause / seek / volume) ----------
+  app.get('/api/dash/player', dashAuth, (_req, res) => res.json(playerState()));
+  app.post('/api/dash/player', dashAuth, (req, res) => {
+    const { op, delta, value } = req.body ?? {};
+    const r = controlPlayer(op, { delta, value });
+    if (!r.ok) return res.status(409).json({ error: r.error });
+    res.json({ ok: true, player: playerState() });
+  });
+
+  // ---------- books & reading groups ----------
+  app.post('/api/dash/book/add', dashAuth, (req, res) => {
+    const { title, totalPages } = req.body ?? {};
+    if (!title?.trim()) return res.status(400).json({ error: 'اكتب عنوان الكتاب' });
+    const id = A.addBook({ title: title.trim(), totalPages: +totalPages || 100 });
+    publishBook(client, A.getBook(id)).catch(() => {}); // card in the library channel
+    ok(res, 'أُضيف الكتاب ونُشر في المكتبة ✓');
+  });
+  app.post('/api/dash/book/remove', dashAuth, (req, res) => {
+    const id = +(req.body?.id);
+    if (!A.removeBook(id)) return res.status(404).json({ error: 'الكتاب غير موجود' });
+    unpublishBook(client, id).catch(() => {});
+    ok(res, 'حُذف الكتاب (ومجموعاته وبطاقته في المكتبة) ✓');
+  });
+  app.post('/api/dash/group/add', dashAuth, async (req, res) => {
+    const { title, bookId } = req.body ?? {};
+    let gid;
+    try { gid = A.createGroup({ title, bookId: +bookId }); }
+    catch (e) { return res.status(400).json({ error: e.message }); }
+    const g = A.getGroup(gid);
+    if (client) {
+      const ch = await client.channels.fetch(getSetting('channel_dashboard')).catch(() => null);
+      if (ch) await ch.send({
+        content: templates.group_new
+          .replace('{{title}}', g.title).replace('{{pages}}', String(g.total_pages)),
+        components: [new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`grp:join:${gid}`).setLabel('📖 أنضم').setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId(`grp:page:${gid}`).setLabel('📝 سجّل صفحتك').setStyle(ButtonStyle.Secondary),
+        )],
+      }).catch(() => null);
+    }
+    ok(res, `أُنشئت مجموعة «${g.title}» وأُعلن في الديسكورد ✓`);
+  });
+  app.post('/api/dash/group/end', dashAuth, (req, res) => {
+    const g = A.getGroup(+(req.body?.id));
+    if (!g) return res.status(404).json({ error: 'المجموعة غير موجودة' });
+    A.endGroup(g.id);
+    ok(res, `أُنهيت مجموعة «${g.title}» ✓`);
+  });
+
+  // ---------- member management ----------
+  app.post('/api/dash/member/rename', dashAuth, (req, res) => {
+    const { id, name } = req.body ?? {};
+    if (!id || !name?.trim()) return res.status(400).json({ error: 'الاسم مطلوب' });
+    const p = A.renameParticipant(String(id), name);
+    if (!p) return res.status(404).json({ error: 'العضو غير موجود' });
+    ok(res, `سُمّي «${p.display_name}» ✓`);
+  });
+  app.post('/api/dash/member/remove', dashAuth, async (req, res) => {
+    const id = String(req.body?.id ?? '');
+    const chId = A.getParticipant(id)?.private_channel_id ?? null;
+    const gone = A.removeMember(id);
+    if (!gone) return res.status(404).json({ error: 'العضو غير موجود' });
+    if (chId && client) {
+      const ch = await client.channels.fetch(chId).catch(() => null);
+      if (ch) await ch.delete('member removed').catch(() => null);
+    }
+    ok(res, `حُذف «${gone.display_name || id}» بكل سجلاته ✓`);
+  });
+
+  // ---------- quiz questions ----------
+  app.post('/api/dash/question/add', dashAuth, (req, res) => {
+    const b = req.body ?? {};
+    try {
+      const id = A.addQuestion({
+        courseId: +b.courseId, lessonId: b.lessonId ? +b.lessonId : null,
+        question: b.question, options: b.options, correctIndex: +b.correctIndex, xp: +b.xp || 10,
+      });
+      ok(res, `أُضيف السؤال #${id} ✓`);
+    } catch (e) { res.status(400).json({ error: e.message }); }
+  });
+  app.post('/api/dash/question/remove', dashAuth, (req, res) => {
+    if (!A.removeQuestion(+(req.body?.id))) return res.status(404).json({ error: 'السؤال غير موجود' });
+    ok(res, 'حُذف السؤال ✓');
+  });
+  app.post('/api/dash/question/send', dashAuth, async (req, res) => {
+    const q = A.getQuestion(+(req.body?.id));
+    if (!q) return res.status(404).json({ error: 'السؤال غير موجود' });
+    if (client) {
+      const ch = await client.channels.fetch(getSetting('channel_dashboard')).catch(() => null);
+      if (ch) {
+        const LETTERS = ['🇦', '🇧', '🇨', '🇩', '🇪'];
+        await ch.send({
+          content: `❓ **${q.question}**\n_أول إجابة صحيحة تكسب ${q.xp} نقطة_`,
+          components: [new ActionRowBuilder().addComponents(
+            q.options.slice(0, 5).map((o, i) =>
+              new ButtonBuilder().setCustomId(`quiz:${q.id}:${i}`).setLabel(o.slice(0, 80)).setStyle(ButtonStyle.Secondary)),
+          )],
+        }).catch(() => null);
+      }
+    }
+    ok(res, 'أُرسل السؤال في الديسكورد ✓');
   });
 
   // ---------- auth + static ----------

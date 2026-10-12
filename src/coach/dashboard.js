@@ -1,6 +1,6 @@
 // The live "Course Dashboard" embed — one message, edited in place.
 import { EmbedBuilder } from 'discord.js';
-import { overview } from '../core/academy.js';
+import { overview, getLesson } from '../core/academy.js';
 import { getSetting } from '../core/db.js';
 import { fmtInTz, humanDuration } from '../core/time.js';
 import { config } from '../core/config.js';
@@ -44,6 +44,16 @@ export function buildDashboardEmbed() {
     value: `**${o.lessons_done} / ${o.lessons_total}** lessons done · ${o.participants} member(s) enrolled`,
     inline: false,
   });
+
+  // with several courses, show each one's progress + its next session
+  if (o.courses?.length > 1) {
+    const lines = o.courses.slice(0, 6).map(c => {
+      const cs = c.next_session;
+      const when = cs ? `next: **${getLesson(cs.lesson_id)?.title ?? '?'}** ${fmtInTz(new Date(cs.scheduled_at), tz)}` : '_no session scheduled_';
+      return `**${c.title}** — ${c.lessons_done}/${c.lessons_total} · ${when}`;
+    });
+    embed.addFields({ name: '📚 Courses', value: lines.join('\n').slice(0, 1024), inline: false });
+  }
 
   if (o.leaderboard.length) {
     const medals = ['🥇', '🥈', '🥉'];
@@ -98,6 +108,8 @@ export async function refreshDashboard(client, { force = false } = {}) {
       cachedMessage = msg;
     }
   } catch (e) {
+    // a deleted channel / stale cached message must not wedge future refreshes
+    invalidateDashboardCache();
     console.log('[coach] dashboard refresh failed:', e.message);
   }
 }

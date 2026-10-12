@@ -6,6 +6,7 @@ import { templates } from '../core/templates.js';
 import { fmtInTz } from '../core/time.js';
 import { config } from '../core/config.js';
 import { markDashboardDirty } from './dashboard.js';
+import { healthTick } from './health.js';
 
 const fill = (text, vars) => text.replace(/\{\{(\w+)\}\}/g, (_, k) => vars?.[k] ?? '');
 
@@ -80,6 +81,7 @@ export function startEngines({ client = null, bus, intervalMs = 60000 } = {}) {
       const now = new Date();
       await runNudges({ client, bus, now });
       await runRecap({ client, bus, now });
+      await healthTick({ bus, now });
     } catch (e) { console.error('[coach] engine error:', e); }
   };
   loop();

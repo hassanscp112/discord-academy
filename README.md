@@ -35,7 +35,8 @@ while messages print to the console.
 4. Invite links (**OAuth2 → URL Generator**): check `bot` +
    - Coach scopes/permissions: `Send Messages`, `Embed Links`, `Read Message
      History`, `Add Reactions`, `View Channels`, `Connect`, `Manage Roles`
-     (for level roles)
+     (for level roles), `Manage Channels` (creates each member's private
+     progress channel)
    - AI Admin: `Send Messages`, `Read Message History`, `View Channels`
    - Open the generated URL, pick your server. Bots land at the bottom of the
      member list — drag roles as you like.

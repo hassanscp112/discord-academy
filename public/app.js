@@ -1,11 +1,11 @@
 /* لوحة الأكاديمية — SPA · ink & amber */
 const $ = s => document.querySelector(s);
-const state = { data: null, page: 'overview', memberFilter: '', editing: null, cd: null, poll: null };
+const state = { data: null, page: 'overview', memberFilter: '', editing: null, cd: null, pp: null, poll: null };
 
 const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ESC_MAP[c]);
 
-const TITLES = { overview: 'نظرة عامة', lessons: 'الدروس والجدول', members: 'الأعضاء', quests: 'قائمة الإنجاز', settings: 'الإعدادات' };
+const TITLES = { overview: 'نظرة عامة', courses: 'الدورات', books: 'الكتب والمجموعات', members: 'الأعضاء', quests: 'قائمة الإنجاز', settings: 'الإعدادات' };
 let TZ = 'Asia/Riyadh';
 
 const api = async (path, body) => {
@@ -41,9 +41,11 @@ const icon = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
 /* ---------- router ---------- */
 function route() {
   const h = (location.hash || '#/overview').replace('#/', '');
-  state.page = TITLES[h] ? h : 'overview';
-  $$('#nav a').forEach(a => a.classList.toggle('on', a.dataset.page === state.page));
-  $('#page-title').textContent = TITLES[state.page];
+  if (h.startsWith('course/')) { state.page = 'course'; state.courseId = Number(h.split('/')[1]) || 0; }
+  else state.page = TITLES[h] ? h : 'overview';
+  $$('#nav a').forEach(a => a.classList.toggle('on',
+    a.dataset.page === state.page || (state.page === 'course' && a.dataset.page === 'courses')));
+  $('#page-title').textContent = TITLES[state.page] ?? 'دورة';
   render();
 }
 const $$ = s => [...document.querySelectorAll(s)];
@@ -83,7 +85,7 @@ async function act(path, body = {}, quiet = false) {
 /* ---------- skeletons ---------- */
 function skeletonFor(page) {
   const rows = n => Array(n).fill('<div class="skel" style="height:34px;margin:10px 0"></div>').join('');
-  if (page === 'overview' || page === 'members' || page === 'lessons') {
+  if (page === 'overview' || page === 'members' || page === 'courses' || page === 'course') {
     return `<div class="surface">${rows(5)}</div><div class="surface">${rows(3)}</div>`;
   }
   return `<div class="surface">${rows(4)}</div>`;
@@ -93,9 +95,10 @@ function skeletonFor(page) {
 function render() {
   const v = $('#view');
   clearInterval(state.cd);
+  clearInterval(state.pp);
   $('#page-actions').innerHTML = '';
   if (!state.data) return;
-  ({ overview: rOverview, lessons: rLessons, members: rMembers, quests: rQuests, settings: rSettings })[state.page](v);
+  ({ overview: rOverview, courses: rCourses, course: rCourse, books: rBooks, members: rMembers, quests: rQuests, settings: rSettings })[state.page](v);
 }
 
 /* ============ OVERVIEW ============ */
@@ -107,35 +110,51 @@ function rOverview(v) {
 
   let liveHtml = '';
   if (live) {
+    const partTag = live.parts > 1 ? ` · الجزء ${live.part}/${live.parts}` : '';
     liveHtml = `<div id="live-banner">
       <span class="live-dot"></span>
       <div class="what">
         <div class="title">${esc(live.lesson_title)}</div>
-        <div class="sub">${live.attendees} في الغرفة · بدأت ${fmt(live.scheduled_at)}</div>
+        <div class="sub">${live.attendees} في الغرفة${partTag} · بدأت ${fmt(live.scheduled_at)}</div>
+      </div>
+      <div id="player-bar" dir="ltr">
+        <button class="pbtn" title="من البداية" onclick="pctl('restart')">${icon('restart')}</button>
+        <button class="pbtn" title="رجوع 10 ثوانٍ" onclick="pctl('seek',{delta:-10})">${icon('rew')}<span class="pnum">10</span></button>
+        <button class="pbtn big" id="pb-toggle" title="إيقاف / استئناف" onclick="pctlToggle()">${icon('pause')}</button>
+        <button class="pbtn" title="تقديم 10 ثوانٍ" onclick="pctl('seek',{delta:10})"><span class="pnum">10</span>${icon('fwd')}</button>
+        <span id="pb-pos" class="pb-time">…</span>
+        <input id="pb-vol" type="range" min="0" max="200" value="100" title="مستوى الصوت" onchange="pctlVol(this.value)">
       </div>
       <button class="btn danger" onclick="act('action/finish')">${icon('stop')} إنهاء الحصة وصرف النقاط</button>
     </div>`;
+    pollPlayer();
+    clearInterval(state.pp);
+    state.pp = setInterval(pollPlayer, 3000);
   }
 
   let startHtml;
   if (notDone.length) {
+    const multi = d.courses.length > 1;
     startHtml = `<div class="surface"><h2>تشغيل درس الآن</h2>
       <div class="frow">
         <div style="flex:3"><select id="pick-lesson" style="width:100%">
-          ${notDone.map(l => `<option value="${l.id}">${l.position}. ${esc(l.title)}</option>`).join('')}
+          ${notDone.map(l => {
+            const c = multi ? d.courses.find(x => x.id === l.course_id) : null;
+            return `<option value="${l.id}">${c ? esc(c.title) + ' — ' : ''}${l.position}. ${esc(l.title)}</option>`;
+          }).join('')}
         </select></div>
         <div style="flex:0"><button class="btn" onclick="act('action/start',{lessonId:+$('#pick-lesson').value})">${icon('play')} ابدأ الحصة</button></div>
       </div>
       <div class="vdim" style="margin-top:9px">المدرب ينضم لغرفة الصوت ويشغّل صوت الدرس مباشرة.</div>
     </div>`;
   } else if (d.lessons.length === 0) {
-    startHtml = `<div class="surface"><h2>الدورة فارغة</h2>
-      <div class="empty">لا دروس بعد.<br><b>أول درس تضيفه يظهر لطلابك في الديسكورد.</b></div>
-      <div style="text-align:center"><a class="btn" href="#/lessons">${icon('plus')} إضافة أول درس</a></div>
+    startHtml = `<div class="surface"><h2>لا دورات بعد</h2>
+      <div class="empty">لا دروس بعد.<br><b>أنشئ دورة من قائمة يوتيوب في صفحة الدورات.</b></div>
+      <div style="text-align:center"><a class="btn" href="#/courses">${icon('plus')} إنشاء أول دورة</a></div>
     </div>`;
   } else {
     startHtml = `<div class="surface"><h2>تشغيل درس الآن</h2>
-      <div class="empty">كل الدروس مكتملة — أضف دروساً جديدة للمتابعة.</div></div>`;
+      <div class="empty">كل الدروس مكتملة — أضف دورة جديدة للمتابعة.</div></div>`;
   }
 
   let nextHtml = '';
@@ -170,9 +189,9 @@ function rOverview(v) {
   const qDone = d.quests.reduce((n, q) => n + (q.done || 0), 0);
   const summary = `<div class="surface" style="display:flex;gap:26px;flex-wrap:wrap;align-items:baseline">
     <div><b style="font-size:17px">${o.lessonsDone}/${o.lessonsTotal}</b> <span class="dim">درس مكتمل</span></div>
+    <div><b style="font-size:17px">${d.courses.length}</b> <span class="dim">دورة${d.courses.length > 1 ? ` · ${d.courses.slice(0, 2).map(c => esc(c.title)).join('،')}${d.courses.length > 2 ? ' وغيرها' : ''}` : d.courses.length === 1 ? ` · ${esc(d.courses[0].title)}` : ''}</span></div>
     <div><b style="font-size:17px">${d.participants.length}</b> <span class="dim">عضو</span></div>
     <div><b style="font-size:17px">${d.quests.length}</b> <span class="dim">عنصر بالقائمة · أنجزه ${qDone}</span></div>
-    <div><b style="font-size:17px">${d.template ? d.template.daysText + ' ' + d.template.time : '—'}</b> <span class="dim">القالب الأسبوعي</span></div>
   </div>`;
 
   v.innerHTML = liveHtml + `<div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
@@ -186,11 +205,151 @@ function rOverview(v) {
   </div>`;
 }
 
-/* ============ LESSONS ============ */
-function rLessons(v) {
-  const d = state.data;
+/* ============ LIVE PLAYER (تحكم بالبث) ============ */
+const fmtSec = s => {
+  s = Math.max(0, Math.floor(s || 0));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+  return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(ss).padStart(2, '0');
+};
 
-  const addForm = `<div class="surface"><h2>درس جديد</h2>
+function paintPlayer(p) {
+  const el = $('#pb-pos');
+  if (!el || !p?.live) return;
+  $('#pb-toggle').innerHTML = p.paused ? icon('play') : icon('pause');
+  el.textContent = p.buffering
+    ? 'جارٍ تجهيز الصوت…'
+    : fmtSec(p.positionSec) + (p.durationSec ? ' / ' + fmtSec(p.durationSec) : '') + (p.paused ? ' · متوقف' : '');
+  const vol = $('#pb-vol');
+  if (vol && document.activeElement !== vol) vol.value = Math.round((p.volume ?? 1) * 100);
+}
+
+async function pollPlayer() {
+  let p;
+  try { p = await api('player'); } catch { return; }
+  if (!$('#pb-pos')) { clearInterval(state.pp); return; }
+  paintPlayer(p);
+}
+
+async function pctl(op, extra = {}) {
+  try {
+    const r = await api('player', { op, ...extra });
+    paintPlayer(r.player);
+  } catch (e) { toast(e.message, true); }
+}
+
+async function pctlToggle() {
+  let p;
+  try { p = await api('player'); } catch { return; }
+  pctl(p.paused ? 'resume' : 'pause');
+}
+
+function pctlVol(v) { pctl('volume', { value: (+v || 0) / 100 }); }
+
+/* ============ COURSES ============ */
+const fmtMin = m => fmtSec((m || 0) * 60);
+
+// shared cadence picker (days / daily / every-N-days) — ids prefixed so the
+// create form and each course page can use it independently
+function cadenceFields(p, tpl) {
+  const mode = tpl?.mode ?? 'days';
+  return `
+      <div style="max-width:160px"><label>التكرار</label>
+        <select id="${p}-mode" onchange="tplMode('${p}')">
+          <option value="days" ${mode === 'days' ? 'selected' : ''}>أيام محددة</option>
+          <option value="daily" ${mode === 'daily' ? 'selected' : ''}>كل يوم</option>
+          <option value="interval" ${mode === 'interval' ? 'selected' : ''}>كل عدة أيام</option>
+        </select></div>
+      <div id="${p}-days-wrap" style="flex:2;min-width:170px" ${mode === 'interval' ? 'hidden' : ''}><label>الأيام <span class="vdim">(الأحد,الأربعاء)</span></label>
+        <input id="${p}-days" value="${tpl && tpl.mode !== 'interval' ? esc(tpl.daysText) : ''}" placeholder="الأحد,الأربعاء"></div>
+      <div id="${p}-n-wrap" style="max-width:110px" ${mode !== 'interval' ? 'hidden' : ''}><label>كل كم يوم؟</label>
+        <input id="${p}-n" type="number" min="2" max="30" value="${tpl?.everyN ?? 2}" style="width:100%"></div>
+      <div style="max-width:104px"><label>الوقت</label><input id="${p}-time" dir="ltr" value="${tpl ? esc(tpl.time) : '21:00'}" placeholder="21:00"></div>`;
+}
+function readCadence(p) {
+  const mode = $('#' + p + '-mode').value;
+  const body = { mode, time: $('#' + p + '-time').value.trim() };
+  if (mode === 'days') body.days = $('#' + p + '-days').value.trim();
+  if (mode === 'interval') body.everyN = +$('#' + p + '-n').value || 2;
+  return body;
+}
+function tplMode(p) {
+  const mode = $('#' + p + '-mode').value;
+  $('#' + p + '-days-wrap').hidden = mode === 'interval';
+  $('#' + p + '-n-wrap').hidden = mode !== 'interval';
+}
+
+function rCourses(v) {
+  const d = state.data;
+  $('#page-actions').innerHTML = `<span class="dim">${d.courses.length} دورة</span>`;
+  const cards = d.courses.map(c => `
+    <a class="course-card" href="#/course/${c.id}">
+      <div class="cc-head"><h3>${esc(c.title)}</h3>${icon('cal')}</div>
+      <div class="cc-cadence">${esc(c.daysText)} · <span dir="ltr">${esc(c.time)}</span></div>
+      <div class="cc-meta dim">${c.lessons_total} دروس · ${c.lessons_done} مكتمل · ${c.upcoming} حصص قادمة</div>
+      <div class="cc-next vdim">${c.next_session ? 'القادمة: ' + esc(c.next_session.lesson_title) + ' — ' + fmt(c.next_session.scheduled_at) : 'لا حصص مجدولة بعد'}</div>
+    </a>`).join('');
+
+  v.innerHTML = `
+  <div class="surface"><h2>إنشاء دورة جديدة</h2>
+    <div class="frow">
+      <div style="flex:2;min-width:170px"><label>عنوان الدورة</label><input id="nc-title" placeholder="مثال: شرح الأربعين النووية"></div>
+      <div style="flex:3;min-width:200px"><label>رابط قائمة يوتيوب <span class="vdim">(اختياري — يستورد دروس الدورة فوراً)</span></label><input id="nc-url" dir="ltr" placeholder="https://youtube.com/playlist?list=…"></div>
+      <div style="flex:0;min-width:100px"><label>مدة الحصة (دقيقة)</label><input id="nc-dur" type="number" value="60" style="width:100%"></div>
+    </div>
+    <div class="frow" style="margin-top:4px">
+      ${cadenceFields('nc', null)}
+    </div>
+    <div style="margin-top:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+      <button class="btn" id="nc-btn" onclick="createCourse()">${icon('plus')} إنشاء الدورة</button>
+      <label style="display:flex;gap:7px;align-items:center;margin:0;font-weight:400"><input type="checkbox" id="nc-gen" checked style="width:auto"> جدولة تلقائية بعد الإنشاء</label>
+    </div>
+    <div class="vdim" style="margin-top:9px">لكل دورة دروسها وإيقاعها الخاص (يومياً / كل عدة أيام / أيام محددة) — والفيديو الأطول من الحصة يُقسَّم تلقائياً على حصص متتالية تكمل من حيث توقفت.</div>
+  </div>
+  <div class="courses-grid">${cards || '<div class="surface"><div class="empty">لا دورات بعد — أنشئ أول دورة من الأعلى.</div></div>'}</div>`;
+}
+
+async function createCourse() {
+  const title = $('#nc-title').value.trim();
+  if (!title) return toast('اكتب عنوان الدورة أولاً', true);
+  const btn = $('#nc-btn');
+  btn.disabled = true;
+  btn.innerHTML = 'جارٍ الإنشاء والاستيراد…';
+  try {
+    await act('course/add', {
+      title, playlistUrl: $('#nc-url').value.trim(),
+      durationMin: +$('#nc-dur').value || 60,
+      generate: $('#nc-gen').checked,
+      ...readCadence('nc'),
+    });
+    const c = (state.data?.courses || []).find(x => x.title === title);
+    if (c) location.hash = '#/course/' + c.id;
+    else location.hash = '#/courses';
+  } catch (e) { /* toast already shown by act */ }
+  finally { btn.disabled = false; btn.innerHTML = `${icon('plus')} إنشاء الدورة`; }
+}
+
+/* ============ COURSE DETAIL ============ */
+function rCourse(v) {
+  const d = state.data;
+  const c = d.courses.find(x => x.id === state.courseId);
+  if (!c) {
+    v.innerHTML = `<div class="surface"><div class="empty">هذه الدورة غير موجودة.<br><a class="btn" style="margin-top:12px" href="#/courses">عودة إلى الدورات</a></div></div>`;
+    return;
+  }
+  $('#page-title').textContent = c.title;
+  const lessons = d.lessons.filter(l => l.course_id === c.id);
+  const sessions = d.sessions.filter(s => s.course_id === c.id && s.status !== 'cancelled');
+
+  const importForm = `<div class="surface"><h2>استيراد قائمة تشغيل إلى هذه الدورة</h2>
+    <div class="frow">
+      <div style="flex:3;min-width:220px"><label>رابط قائمة يوتيوب</label><input id="pl-url" dir="ltr" placeholder="https://youtube.com/playlist?list=…"></div>
+      <div style="flex:0;min-width:110px"><label>مدة الحصة (دقيقة)</label><input id="pl-dur" type="number" value="60" style="width:100%"></div>
+      <div style="flex:0"><button class="btn" id="pl-btn" onclick="importPlaylist()">${icon('plus')} استيراد</button></div>
+    </div>
+    <div class="vdim" style="margin-top:9px">كل فيديو يصبح درساً بعنوانه. الفيديو الأطول من مدة الحصة يُقسَّم تلقائياً على حصص متتالية، وكل حصة تكمل من حيث توقّفت السابقة.</div>
+  </div>`;
+
+  const addForm = `<div class="surface"><h2>درس جديد في هذه الدورة</h2>
     <div class="frow">
       <div style="flex:3;min-width:200px"><label>العنوان</label><input id="nl-title" placeholder="مثال: الدرس الأول — المدخلات"></div>
       <div style="flex:3;min-width:200px"><label>رابط يوتيوب <span class="vdim">(بدونه لن يعمل البث)</span></label><input id="nl-url" dir="ltr" placeholder="https://youtube.com/watch?v=…"></div>
@@ -199,7 +358,7 @@ function rLessons(v) {
     </div>
   </div>`;
 
-  const rows = d.lessons.map(l => {
+  const rows = lessons.map(l => {
     if (state.editing === l.id) return editRow(l);
     const s = l.session;
     const sched = l.done
@@ -207,9 +366,11 @@ function rLessons(v) {
       : s
         ? (s.status === 'live' ? '<span class="pill bad">مباشر الآن</span>' : `<span class="dim">${fmt(s.scheduled_at)}</span>`)
         : '<span class="vdim">غير مجدول</span>';
+    const partsInfo = l.video_sec && l.parts > 1
+      ? `<div class="vdim">طول الفيديو ${fmtSec(l.video_sec)} · ${l.parts} حصص متتالية</div>` : '';
     return `<tr>
       <td class="vdim">${l.position}</td>
-      <td><b>${esc(l.title)}</b><div class="vdim" dir="ltr">${l.url ? esc(l.url) : 'بدون رابط — لا بث'}</div></td>
+      <td><b>${esc(l.title)}</b><div class="vdim" dir="ltr">${l.url ? esc(l.url) : 'بدون رابط — لا بث'}</div>${partsInfo}</td>
       <td>${sched}</td>
       <td class="actions"><div class="acts">
         ${!l.done && !d.live ? `<button class="btn quiet sm icon" title="ابدأ الآن" onclick="act('action/start',{lessonId:${l.id}})">${icon('play')}</button>` : ''}
@@ -221,9 +382,10 @@ function rLessons(v) {
     </tr>`;
   }).join('');
 
-  const sess = d.sessions.filter(s => s.status !== 'cancelled').map(s => `<tr>
+  const sess = sessions.map(s => `<tr>
     <td class="vdim">#${s.id}</td>
     <td><b>${esc(s.lesson_title)}</b></td>
+    <td>${s.parts > 1 ? `<span class="pill plain">الجزء ${s.part}/${s.parts}</span><div class="vdim">من ${fmtMin(s.from_min)}${s.to_min != null ? ' إلى ' + fmtMin(s.to_min) : ''}</div>` : '<span class="vdim">كامل</span>'}</td>
     <td>${s.status === 'live' ? '<span class="pill bad">مباشر</span>' : `<span class="dim">${fmt(s.scheduled_at)}</span>`}</td>
     <td class="actions"><div class="acts" dir="ltr">
       <input type="date" id="sd-${s.id}" value="${s.scheduled_at.slice(0, 10)}" style="padding:5px 8px;width:132px">
@@ -233,29 +395,98 @@ function rLessons(v) {
     </div></td>
   </tr>`).join('');
 
-  const tpl = d.template;
-  v.innerHTML = addForm + `
-  <div class="surface"><h2>الدروس (${d.lessons.length})</h2>
+  v.innerHTML = `
+  <div class="surface" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <a href="#/courses" class="btn quiet sm">← كل الدورات</a>
+    <div style="flex:1;min-width:200px">
+      <b style="font-size:16px">${esc(c.title)}</b>
+      <span class="dim" style="margin-inline-start:8px">${esc(c.daysText)} · <span dir="ltr">${esc(c.time)}</span> · ${lessons.length} دروس</span>
+    </div>
+  </div>` + importForm + addForm + `
+  <div class="surface"><h2>الدروس (${lessons.length})</h2>
     <div class="tbl-wrap"><table>
       <thead><tr><th>#</th><th>الدرس</th><th>الموعد</th><th></th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="4" class="empty">لا دروس.<br><b>النموذج بالأعلى يضيف أول درس — العنوان يظهر لطلابك كما تكتبه.</b></td></tr>`}</tbody>
+      <tbody>${rows || `<tr><td colspan="4" class="empty">لا دروس في هذه الدورة.<br><b>الصق رابط قائمة التشغيل بالأعلى — تُستورد كاملة في دقيقة.</b></td></tr>`}</tbody>
     </table></div>
   </div>
-  <div class="surface"><h2>الحصص القادمة</h2>
+  <div class="surface"><h2>حصص هذه الدورة (${sessions.length})</h2>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>الرقم</th><th>الدرس</th><th>الموعد</th><th></th></tr></thead>
-      <tbody>${sess || `<tr><td colspan="4" class="empty">لا حصص مجدولة.<br>حدّد القالب بالأسفل ثم «جدولة تلقائية».</td></tr>`}</tbody>
+      <thead><tr><th>الرقم</th><th>الدرس</th><th>الجزء</th><th>الموعد</th><th></th></tr></thead>
+      <tbody>${sess || `<tr><td colspan="5" class="empty">لا حصص مجدولة.<br>حدّد الإيقاع بالأسفل ثم «جدولة تلقائية».</td></tr>`}</tbody>
     </table></div>
   </div>
-  <div class="surface"><h2>القالب الأسبوعي</h2>
+  <div class="surface"><h2>تقدّم الأعضاء في هذه الدورة</h2>
+    <div id="roster-body"><div class="skel" style="height:34px;margin:10px 0"></div></div>
+  </div>
+  <div class="surface"><h2>أسئلة الدورة (تُرسل تلقائياً بعد الحصة)</h2>
     <div class="frow">
-      <div><label>الأيام <span class="vdim">(الأحد,الأربعاء)</span></label><input id="tpl-days" value="${tpl ? esc(tpl.daysText) : ''}" placeholder="الأحد,الأربعاء"></div>
-      <div style="max-width:120px"><label>الوقت</label><input id="tpl-time" dir="ltr" value="${tpl ? esc(tpl.time) : '21:00'}" placeholder="21:00"></div>
-      <div style="flex:0"><button class="btn quiet" onclick="saveTpl()">حفظ القالب</button></div>
-      <div style="flex:0"><button class="btn" onclick="act('generate',{})">${icon('bolt')} جدولة تلقائية</button></div>
+      <div style="flex:2;min-width:200px"><label>السؤال</label><input id="q-text" placeholder="مثال: ما حكم كذا؟"></div>
+      <div style="flex:2;min-width:180px"><label>الدرس <span class="vdim">(اختياري — بدون درس لا يُرسل تلقائياً)</span></label>
+        <select id="q-lesson" style="width:100%"><option value="">— بدون —</option>
+          ${lessons.map(l => `<option value="${l.id}">${l.position}. ${esc(l.title)}</option>`).join('')}
+        </select></div>
     </div>
-    <div class="vdim" style="margin-top:9px">«جدولة تلقائية» توزع الدروس غير المكتملة على مواعيد القالب بالترتيب.</div>
+    <div class="frow" style="margin-top:4px">
+      ${[1, 2, 3, 4].map(n => `<div style="flex:1;min-width:120px"><label>الخيار ${n}</label><input id="q-opt${n}" ${n <= 2 ? '' : 'placeholder="اختياري"'}></div>`).join('')}
+      <div style="flex:0;min-width:120px"><label>الإجابة الصحيحة</label>
+        <select id="q-correct" style="width:100%"><option value="0">الخيار 1</option><option value="1">الخيار 2</option><option value="2">الخيار 3</option><option value="3">الخيار 4</option></select></div>
+      <div style="flex:0;min-width:80px"><label>النقاط</label><input id="q-xp" type="number" value="10" style="width:100%"></div>
+      <div style="flex:0"><button class="btn" onclick="addQuestion()">${icon('plus')} إضافة</button></div>
+    </div>
+    <div class="vdim" style="margin-top:9px">عند انتهاء حصة الدرس يُرسل سؤاله في قناة الإعلانات بأزرار اختيار — أول إجابة صحيحة تكسب النقاط.</div>
+    <div class="tbl-wrap" style="margin-top:12px"><table>
+      <thead><tr><th>السؤال</th><th>الدرس</th><th>الإجابات</th><th></th></tr></thead>
+      <tbody>${(d.questions || []).filter(q => q.course_id === c.id).map(q => `<tr>
+        <td><b>${esc(q.question)}</b><div class="vdim">✅: ${esc(q.options[q.correct_index] ?? '')}</div></td>
+        <td class="dim">${q.lesson_id ? esc((lessons.find(l => l.id === q.lesson_id) || {}).title ?? '—') : 'عام'}</td>
+        <td class="dim">${q.answers}</td>
+        <td class="actions"><div class="acts">
+          <button class="btn quiet sm" onclick="act('question/send',{id:${q.id}})">إرسال الآن</button>
+          <button class="btn danger sm icon" title="حذف" onclick="act('question/remove',{id:${q.id}},true)">${icon('trash')}</button>
+        </div></td>
+      </tr>`).join('') || `<tr><td colspan="4" class="empty">لا أسئلة بعد — أضف أول سؤال من الأعلى.</td></tr>`}</tbody>
+    </table></div>
+  </div>
+  <div class="surface"><h2>إعدادات الدورة</h2>
+    <div class="frow">
+      <div style="flex:2;min-width:180px"><label>العنوان</label><input id="c-title" value="${esc(c.title)}"></div>
+    </div>
+    <div class="frow" style="margin-top:4px">
+      ${cadenceFields('tpl', c)}
+      <div style="flex:0"><button class="btn quiet" onclick="saveCourse()">حفظ</button></div>
+      <div style="flex:0"><button class="btn" onclick="genCourse()">${icon('bolt')} جدولة تلقائية</button></div>
+    </div>
+    <div class="vdim" style="margin-top:9px">الإيقاع خاص بهذه الدورة وحدها — «جدولة تلقائية» توزع دروسها غير المكتملة على مواعيده بالترتيب، والدرس الطويل يأخذ عدة مواعيد متتالية.</div>
+    <div style="margin-top:14px"><button class="btn danger sm" onclick="delCourse(${c.id},${JSON.stringify(c.title).replace(/"/g, '&quot;')})">${icon('trash')} حذف الدورة بدروسها ومواعيدها</button></div>
   </div>`;
+  loadRoster(c.id);
+}
+
+// members' standing in the current course — who finished what, who's next
+async function loadRoster(courseId) {
+  let r;
+  try { r = await api('course/' + courseId + '/progress'); }
+  catch (e) {
+    const errEl = $('#roster-body');
+    if (errEl) errEl.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    return;
+  }
+  const el = $('#roster-body');
+  if (!el) return; // page changed while fetching
+  const rows = r.roster.map(m => {
+    const pct = m.total ? Math.min(1, m.done / m.total) : 0;
+    return `<tr style="cursor:pointer" onclick="openMember('${m.user_id}')">
+      <td><b>${esc(m.name)}</b></td>
+      <td style="min-width:130px"><div class="dim" style="margin-bottom:5px">${m.done}/${m.total}</div><div class="bar" style="margin-top:0"><i style="transform:scaleX(${pct.toFixed(3)})"></i></div></td>
+      <td class="dim">${m.next_lesson ? esc(m.next_lesson.title) : 'أكمل الدورة 🎉'}</td>
+      <td class="vdim">${m.last_completed_at ? fmt(m.last_completed_at) : '—'}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<div class="tbl-wrap"><table>
+    <thead><tr><th>العضو</th><th>التقدّم</th><th>الدرس التالي له</th><th>آخر إنجاز</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="4" class="empty">لا أعضاء بعد.<br><b>يظهر العضو هنا من أول حضور له حصة أو أول درس يُكمله.</b></td></tr>`}</tbody>
+  </table></div>
+  <div class="vdim" style="margin-top:8px">اضغط على أي عضو لفتح قائمة إنجازه الكاملة في كل الدورات.</div>`;
 }
 
 function editRow(l) {
@@ -285,7 +516,22 @@ async function saveEdit(id) {
 async function addLesson() {
   const title = $('#nl-title').value.trim();
   if (!title) return toast('اكتب عنوان الدرس أولاً', true);
-  await act('lesson/add', { title, url: $('#nl-url').value.trim(), durationMin: +$('#nl-dur').value || 60 });
+  await act('lesson/add', { title, url: $('#nl-url').value.trim(), durationMin: +$('#nl-dur').value || 60, courseId: state.courseId });
+}
+async function importPlaylist() {
+  const url = $('#pl-url').value.trim();
+  if (!/^https?:\/\//.test(url)) return toast('الصق رابط قائمة التشغيل أولاً', true);
+  const btn = $('#pl-btn');
+  btn.disabled = true;
+  btn.innerHTML = 'جارٍ قراءة القائمة…';
+  try {
+    await act('playlist/import', { url, durationMin: +$('#pl-dur').value || 60, courseId: state.courseId });
+    $('#pl-url').value = '';
+  } catch (e) { /* toast already shown by act */ }
+  finally {
+    btn.disabled = false;
+    btn.innerHTML = `${icon('plus')} استيراد`;
+  }
 }
 async function delLesson(id, title) {
   if (!confirm(`حذف الدرس «${title}»؟ سيُحذف مع مواعيده.`)) return;
@@ -294,8 +540,108 @@ async function delLesson(id, title) {
 async function moveSess(id) {
   await act('session/move', { id, date: $('#sd-' + id).value, time: $('#st-' + id).value });
 }
-async function saveTpl() {
-  await act('template', { days: $('#tpl-days').value, time: $('#tpl-time').value });
+async function saveCourse() {
+  const title = $('#c-title').value.trim();
+  if (!title) return toast('العنوان مطلوب', true);
+  await act('course/update', { id: state.courseId, title, ...readCadence('tpl') });
+}
+async function genCourse() {
+  await act('course/generate', { id: state.courseId });
+}
+async function delCourse(id, title) {
+  if (!confirm(`حذف دورة «${title}» بكل دروسها ومواعيدها؟ لا يمكن التراجع.`)) return;
+  await act('course/remove', { id });
+  location.hash = '#/courses';
+}
+async function addQuestion() {
+  const question = $('#q-text').value.trim();
+  const options = [1, 2, 3, 4].map(n => $('#q-opt' + n).value.trim()).filter(Boolean);
+  if (!question || options.length < 2) return toast('اكتب السؤال وخيارين على الأقل', true);
+  await act('question/add', {
+    courseId: state.courseId,
+    lessonId: $('#q-lesson').value || null,
+    question, options,
+    correctIndex: +$('#q-correct').value,
+    xp: +$('#q-xp').value || 10,
+  });
+}
+
+/* ============ BOOKS & READING GROUPS ============ */
+function rBooks(v) {
+  const d = state.data;
+  $('#page-actions').innerHTML = `<span class="dim">${d.books.length} كتاب · ${d.groups.length} مجموعة</span>`;
+  const bookOpts = d.books.map(b => `<option value="${b.id}">${esc(b.title)} — ${b.total_pages} صفحة</option>`).join('');
+
+  const bookRows = d.books.map(b => `<tr>
+    <td><b>${esc(b.title)}</b>${b.has_pdf ? ' <span class="pill warn" title="متاح للتحميل من لوحة العضو">📄 PDF</span>' : ''}</td>
+    <td class="dim">${b.total_pages}</td>
+    <td style="min-width:140px">${b.readers
+      ? `<div class="dim" style="margin-bottom:5px">${b.readers} قارئ${b.finished ? ` · أكمله ${b.finished}` : ''}</div><div class="bar" style="margin-top:0"><i style="transform:scaleX(${Math.min(1, b.avg_pct / 100).toFixed(3)})"></i></div><div class="vdim">متوسط التقدّم ${b.avg_pct}%</div>`
+      : '<span class="vdim">لا قرّاء بعد</span>'}</td>
+    <td class="actions"><button class="btn danger sm icon" title="حذف" onclick="delBook(${b.id},${JSON.stringify(b.title).replace(/"/g, '&quot;')})">${icon('trash')}</button></td>
+  </tr>`).join('');
+
+  const groups = d.groups.map(g => {
+    const roster = g.roster || [];
+    const rows = roster.map(m => {
+      const pct = m.total_pages ? Math.min(1, m.page / m.total_pages) : 0;
+      return `<tr style="cursor:pointer" onclick="openMember('${m.user_id}')">
+        <td><b>${esc(m.name)}</b>${m.finished ? ' <span class="pill ok">أكمله 🎉</span>' : ''}</td>
+        <td style="min-width:130px"><div class="dim" style="margin-bottom:5px">${m.page}/${m.total_pages}</div><div class="bar" style="margin-top:0"><i style="transform:scaleX(${pct.toFixed(3)})"></i></div></td>
+        <td class="vdim">${m.updated_at ? fmt(m.updated_at) : '—'}</td>
+      </tr>`;
+    }).join('');
+    const done = roster.filter(m => m.finished).length;
+    return `<div class="surface">
+      <h2 style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <span>📚 ${esc(g.title)} — ${esc(g.book_title)}</span>
+        <button class="btn danger sm" onclick="act('group/end',{id:${g.id}})">إنهاء المجموعة</button>
+      </h2>
+      <div class="tbl-wrap"><table>
+        <thead><tr><th>العضو</th><th>الصفحة</th><th>آخر تحديث</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="3" class="empty">لا أعضاء بعد — يضمّون بأنفسهم من زر «📖 أنضم» في إعلان الديسكورد.</td></tr>`}</tbody>
+      </table></div>
+      <div class="vdim" style="margin-top:8px">${roster.length} أعضاء · أكمل الكتاب ${done} · التقدّم يُحدَّث لحظياً من أزرار الديسكورد.</div>
+    </div>`;
+  }).join('');
+
+  v.innerHTML = `
+  <div class="surface"><h2>كتاب جديد</h2>
+    <div class="frow">
+      <div style="flex:3;min-width:200px"><label>عنوان الكتاب</label><input id="bk-title" placeholder="مثال: رياض الصالحين"></div>
+      <div style="flex:0;min-width:110px"><label>عدد الصفحات</label><input id="bk-pages" type="number" value="200" style="width:100%"></div>
+      <div style="flex:0"><button class="btn" onclick="addBook()">${icon('plus')} إضافة كتاب</button></div>
+    </div>
+  </div>
+  <div class="surface"><h2>مجموعة قراءة جديدة</h2>
+    <div class="frow">
+      <div style="flex:2;min-width:170px"><label>اسم المجموعة <span class="vdim">(اختياري)</span></label><input id="gr-title" placeholder="افتراضياً اسم الكتاب"></div>
+      <div style="flex:2;min-width:200px"><label>الكتاب</label><select id="gr-book" style="width:100%">${bookOpts}</select></div>
+      <div style="flex:0"><button class="btn" onclick="addGroup()">${icon('plus')} إنشاء وإعلان</button></div>
+    </div>
+    <div class="vdim" style="margin-top:9px">يُعلن عنها في الديسكورد مع زر «📖 أنضم» وزر «📝 سجّل صفحتك» — كل عضو يسجّل الصفحة التي وصل إليها وتظهر لك هنا مباشرة.</div>
+  </div>
+  ${groups}
+  <div class="surface"><h2>الكتب (${d.books.length})</h2>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>الكتاب</th><th>الصفحات</th><th>التقدّم</th><th></th></tr></thead>
+      <tbody>${bookRows || `<tr><td colspan="4" class="empty">لا كتب بعد — أضف كتاباً من الأعلى ثم أنشئ له مجموعة قراءة.</td></tr>`}</tbody>
+    </table></div>
+  </div>`;
+}
+async function addBook() {
+  const title = $('#bk-title').value.trim();
+  if (!title) return toast('اكتب عنوان الكتاب', true);
+  await act('book/add', { title, totalPages: +$('#bk-pages').value || 100 });
+}
+async function delBook(id, title) {
+  if (!confirm(`حذف كتاب «${title}»؟ تنتهي مجموعاته معه.`)) return;
+  await act('book/remove', { id });
+}
+async function addGroup() {
+  const bookId = +$('#gr-book').value;
+  if (!bookId) return toast('أضف كتاباً أولاً', true);
+  await act('group/add', { title: $('#gr-title').value.trim(), bookId });
 }
 
 /* ============ MEMBERS ============ */
@@ -342,25 +688,50 @@ function rMembers(v) {
 async function openMember(id) {
   let m;
   try { m = await api('member/' + id); } catch (e) { return toast(e.message, true); }
-  const total = Math.max(state.data.lessons.length, 1);
-  const pct = Math.min(1, m.lessons_done / total);
   const tl = m.timeline.slice(0, 16).map(t => `<div class="tl-item">
     <div class="tl-ico">${icon(t.ico)}</div>
     <div><b>${esc(t.title)}</b><div class="vdim">${esc(t.sub)}</div></div>
     <div class="tl-when">${fmt(t.at)}</div>
   </div>`).join('');
+  // per-course checklist: where this member reached in every course
+  const courses = (m.courses || []).map(c => {
+    const pct = c.total ? Math.min(1, c.done / c.total) : 0;
+    const items = c.items.map(i => `<div class="ck-item${i.done ? ' done' : ''}">
+      <span class="ck-mark">${i.done ? '✅' : '◻️'}</span>
+      <span class="ck-pos">${i.position}</span>
+      <span class="ck-title">${esc(i.title)}</span>
+      ${i.done && i.completed_at ? `<span class="ck-when">${fmt(i.completed_at)}</span>` : ''}
+    </div>`).join('');
+    return `<div class="ck-course">
+      <div class="ck-head">
+        <b>${esc(c.title)}</b>
+        <span class="dim">${c.done}/${c.total} · ${c.next ? 'التالي: ' + esc(c.next.title) : 'أكمل الدورة 🎉'}</span>
+      </div>
+      <div class="bar"><i style="transform:scaleX(${pct.toFixed(3)})"></i></div>
+      <div class="ck-list">${items || '<div class="vdim" style="padding:6px 2px">لا دروس في هذه الدورة بعد</div>'}</div>
+    </div>`;
+  }).join('');
+  const shelf = (m.books || []).slice(0, 8).map(b => `<div class="ck-item${b.finished ? ' done' : ''}">
+    <span class="ck-mark">${b.finished ? '✅' : '📖'}</span>
+    <span class="ck-title">${esc(b.title)}</span>
+    <span class="ck-when">${b.finished ? 'أكمله 🎉' : `صفحة ${b.page}/${b.total_pages}`}</span>
+  </div>`).join('');
   $('#drawer-body').innerHTML = `
     <div class="d-head">
       <div>
         <h2>${esc(m.name)}</h2>
-        <div class="d-sub">${m.xp} نقطة · ${esc(m.level.name)} · سلسلة ${m.streak}</div>
+        <div class="d-sub">${m.xp} نقطة · ${esc(m.level.name)} · سلسلة ${m.streak} · ${m.lessons_done}/${state.data.lessons.length} درساً</div>
       </div>
       <button class="d-close" onclick="closeDrawer()" aria-label="إغلاق">${icon('x')}</button>
     </div>
-    <div style="margin-top:14px">
-      <div class="dim">الدروس المكتملة: ${m.lessons_done} / ${state.data.lessons.length}</div>
-      <div class="bar"><i style="transform:scaleX(${pct.toFixed(3)})"></i></div>
+    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button class="btn quiet sm" onclick="renameMember('${m.user_id}',${JSON.stringify(m.name).replace(/"/g, '&quot;')})">${icon('edit')} تعديل الاسم</button>
+      <button class="btn danger sm" onclick="removeMember('${m.user_id}',${JSON.stringify(m.name).replace(/"/g, '&quot;')})">${icon('trash')} حذف العضو</button>
     </div>
+    <div class="ck-wrap">${courses}${shelf ? `<div class="ck-course">
+      <div class="ck-head"><b>📚 كتبي</b><span class="dim">${(m.books || []).filter(b => b.finished).length} مكتمل</span></div>
+      <div class="ck-list" style="margin-top:8px">${shelf}</div>
+    </div>` : ''}</div>
     <div class="tl">
       <h2 style="font-size:14px;color:var(--text-2);margin-bottom:2px">سجل النشاط</h2>
       ${tl || '<div class="empty">لا نشاط بعد</div>'}
@@ -369,6 +740,17 @@ async function openMember(id) {
   $('#drawer-scrim').hidden = false;
 }
 function closeDrawer() { $('#drawer').hidden = true; $('#drawer-scrim').hidden = true; }
+async function renameMember(id, name) {
+  const n = prompt('الاسم الجديد للعضو:', name);
+  if (n == null || !n.trim()) return;
+  closeDrawer();
+  await act('member/rename', { id, name: n.trim() });
+}
+async function removeMember(id, name) {
+  if (!confirm(`حذف «${name}» نهائياً؟ تُحذف نقاطه وتقدمه وقناته الخاصة.`)) return;
+  closeDrawer();
+  await act('member/remove', { id });
+}
 $('#drawer-scrim').addEventListener('click', closeDrawer);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
 
