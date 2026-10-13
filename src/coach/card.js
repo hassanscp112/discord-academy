@@ -1,8 +1,14 @@
 // HTML -> PNG card renderer (headless Edge/Chromium via puppeteer-core, no
 // bundled browser). Falls back to null when no browser exists — callers then
 // keep their plain embeds, so nothing ever breaks.
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { join, dirname } from 'node:path';
 import puppeteer from 'puppeteer-core';
+
+// هُدَى emblem, inlined as a data URI so setContent() renders it without a server
+const here = dirname(fileURLToPath(import.meta.url));
+const EMBLEM = `data:image/png;base64,${readFileSync(join(here, '../../public/logo-card.png')).toString('base64')}`;
 
 const CANDIDATES = [
   process.env.BROWSER_PATH,
@@ -61,6 +67,8 @@ body{background:transparent}
 #card{width:860px;background:#14110c;border:1px solid #37301f;border-radius:18px;
   padding:32px 36px;font-family:'Tajawal',Tahoma,'Segoe UI',sans-serif;color:#f3ecdc}
 .head{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:20px}
+.who{display:flex;align-items:center;gap:13px;min-width:0}
+.hlogo{width:46px;height:46px;border-radius:50%;flex-shrink:0}
 .name{font-size:30px;font-weight:800;line-height:1.2}
 .pills{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .pill{background:#2a2318;border:1px solid #4a4028;color:#e2a13c;font-weight:700;
@@ -108,7 +116,7 @@ export function memberCardHTML(d) {
       b.finished ? '✅' : `${b.page}/${b.total_pages}`)).join('');
   return page(`
   <div class="head">
-    <div class="name">📊 ${esc(d.name)}</div>
+    <div class="who"><img class="hlogo" src="${EMBLEM}" alt=""><div class="name">📊 ${esc(d.name)}</div></div>
     <div class="pills">
       <span class="pill">${esc(d.level.emoji)} ${esc(d.level.name)}</span>
       ${d.rank ? `<span class="pill">🏅 المركز ${d.rank}</span>` : ''}
@@ -131,7 +139,7 @@ export function memberCardHTML(d) {
 export function bookCardHTML(book) {
   return page(`
   <div class="head">
-    <div class="name">📖 ${esc(book.title)}</div>
+    <div class="who"><img class="hlogo" src="${EMBLEM}" alt=""><div class="name">📖 ${esc(book.title)}</div></div>
     <div class="pills"><span class="pill">${book.total_pages} صفحة</span></div>
   </div>
   <div class="row" style="margin-top:6px">
@@ -151,7 +159,7 @@ export function onboardingCardHTML() {
   </div>`;
   return page(`
   <div class="head">
-    <div class="name">🎓 أهلاً بك في الأكاديمية</div>
+    <div class="who"><img class="hlogo" src="${EMBLEM}" alt=""><div class="name">🎓 أهلاً بك في الأكاديمية</div></div>
     <div class="pills"><span class="pill">دورات · حصص مباشرة · كتب</span></div>
   </div>
   ${step(1, '🔊 احضر الحصة المباشرة',
@@ -177,7 +185,7 @@ export function listCardHTML({ icon, title, subtitle, rows }) {
   ).join('');
   return page(`
   <div class="head">
-    <div class="name">${icon} ${esc(title)}</div>
+    <div class="who"><img class="hlogo" src="${EMBLEM}" alt=""><div class="name">${icon} ${esc(title)}</div></div>
     ${subtitle ? `<div class="pills"><span class="pill">${esc(subtitle)}</span></div>` : ''}
   </div>
   ${body || '<div class="row"><div class="t" style="color:#6e6650">لا يوجد شيء هنا بعد</div></div>'}

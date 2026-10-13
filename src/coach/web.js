@@ -480,13 +480,22 @@ export function startWeb({ client = null, bus }) {
   });
 
   // ---------- auth + static ----------
-  const loginPage = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>الأكاديمية</title>
-<style>body{font-family:Tajawal,'Segoe UI',sans-serif;background:#0b0e17;color:#e9ecf5;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-.c{background:#151b2e;border:1px solid #232c4a;border-radius:16px;padding:30px;width:min(360px,90vw)}
-h1{font-size:22px;margin-bottom:4px}.s{color:#939dbd;font-size:14px;margin-bottom:18px}
-input{width:100%;box-sizing:border-box;background:#0b0e17;color:#fff;border:1px solid #2e3a61;border-radius:10px;padding:12px;font-size:16px}
-button{width:100%;margin-top:14px;background:#5865f2;color:#fff;border:none;border-radius:10px;padding:13px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit}</style></head>
-<body><form class="c" method="post" action="/login"><h1>🎓 لوحة الأكاديمية</h1><div class="s">تسجيل الدخول</div>
+  const loginPage = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>هُدَى · لوحة الأكاديمية</title>
+<link rel="icon" href="/logo-mark.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>body{font-family:Tajawal,'Segoe UI',sans-serif;background:linear-gradient(165deg,#24468B 0%,#1E3A6E 45%,#152A52 100%);display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+.c{background:#fff;border:1px solid #E3E8F0;border-radius:18px;padding:30px 30px 30px;width:min(380px,90vw);box-shadow:0 24px 60px rgba(8,18,42,.4);text-align:center}
+.em{display:block;width:150px;height:auto;margin:0 auto 4px;border-radius:18px;border:1px solid #E9DFC2;box-shadow:0 10px 26px rgba(22,41,79,.10)}
+.tag{color:#8B98AF;font-size:12px;letter-spacing:2px;margin-bottom:20px}
+.s{color:#5B6B87;font-size:14px;margin-bottom:16px}
+input{width:100%;box-sizing:border-box;background:#fff;color:#22314E;border:1px solid #CBD4E2;border-radius:10px;padding:12px;font-size:16px;text-align:center;outline:none;transition:border-color .15s,box-shadow .15s}
+input:focus{border-color:#C9992E;box-shadow:0 0 0 3px rgba(201,153,46,.14)}
+button{width:100%;margin-top:14px;background:#C9992E;color:#16294F;border:none;border-radius:10px;padding:13px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s}
+button:hover{background:#DBAF41}</style></head>
+<body><form class="c" method="post" action="/login">
+<img class="em" src="/logo.png" alt="هُدَى">
+<div class="tag">منصّة دعوية</div><div class="s">تسجيل الدخول إلى لوحة الأكاديمية</div>
 <input type="password" name="password" placeholder="كلمة المرور" autofocus><button>دخول</button></form></body></html>`;
   app.get('/login', (_req, res) => res.send(loginPage));
   app.post('/login', (req, res) => {

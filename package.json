@@ -13,8 +13,6 @@
   },
   "dependencies": {
     "@discordjs/voice": "^0.19.2",
-    "@projectdysnomia/dysnomia": "^0.2.4",
-    "@snazzah/davey": "^0.1.12",
     "discord.js": "^14.16.3",
     "dotenv": "^16.4.5",
     "express": "^4.21.2",

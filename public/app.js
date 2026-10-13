@@ -1,4 +1,4 @@
-/* لوحة الأكاديمية — SPA · ink & amber */
+/* لوحة الأكاديمية — SPA · هُدَى (navy & gold) */
 const $ = s => document.querySelector(s);
 const state = { data: null, page: 'overview', memberFilter: '', editing: null, cd: null, pp: null, poll: null };
 
@@ -36,7 +36,7 @@ const fmt = (iso, withDate = true) => {
   }).format(new Date(iso));
 };
 
-const icon = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
+const icon = name => `<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24"><use href="#i-${name}"/></svg>`;
 
 /* ---------- router ---------- */
 function route() {
@@ -490,7 +490,7 @@ async function loadRoster(courseId) {
 }
 
 function editRow(l) {
-  return `<tr style="background:var(--ink-3)">
+  return `<tr style="background:var(--tint)">
     <td class="vdim">${l.position}</td>
     <td colspan="2">
       <div class="frow" style="align-items:center">
