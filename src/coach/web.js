@@ -477,7 +477,7 @@ export function startWeb({ client = null, bus }) {
       if (ch) {
         const LETTERS = ['🇦', '🇧', '🇨', '🇩', '🇪'];
         await ch.send({
-          content: `❓ **${q.question}**\n_أول إجابة صحيحة تكسب ${q.xp} نقطة_`,
+          content: `❓ **${q.question}**\n_كن أول من يجيب إجابة صحيحة_`,
           components: [new ActionRowBuilder().addComponents(
             q.options.slice(0, 5).map((o, i) =>
               new ButtonBuilder().setCustomId(`quiz:${q.id}:${i}`).setLabel(o.slice(0, 80)).setStyle(ButtonStyle.Secondary)),

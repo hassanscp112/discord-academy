@@ -5,7 +5,7 @@ const state = { data: null, page: 'overview', memberFilter: '', editing: null, c
 const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ESC_MAP[c]);
 
-const TITLES = { overview: 'نظرة عامة', courses: 'الدورات', books: 'الكتب والمجموعات', members: 'الأعضاء', quests: 'قائمة الإنجاز', settings: 'الإعدادات' };
+const TITLES = { overview: 'نظرة عامة', courses: 'الدورات', books: 'الكتب والمجموعات', members: 'الأعضاء', quests: 'الإنجازات', settings: 'الإعدادات' };
 let TZ = 'Asia/Riyadh';
 
 const api = async (path, body) => {
@@ -52,19 +52,27 @@ const $$ = s => [...document.querySelectorAll(s)];
 window.addEventListener('hashchange', route);
 
 /* ---------- data ---------- */
+// A soft refresh (the 15s poll) must never clobber what the user is doing:
+// skip the re-render while they're in a form field, and skip it entirely when
+// nothing changed — otherwise every page's inputs wipe themselves mid-typing.
+let pendingRender = false;
 async function refresh(soft = true) {
   if (!soft) $('#view').innerHTML = skeletonFor(state.page);
   try {
-    state.data = await api('data');
-    TZ = state.data.tz || TZ;
-    $('#bot-dot').className = 'dot' + (state.data.botOk ? '' : ' off');
-    $('#bot-label').textContent = state.data.botOk ? 'المدرب متصل' : 'المدرب غير متصل';
-    if (soft && state.memberFilter !== undefined && state.page === 'members') {
-      // keep search focus across soft refresh
-      const active = document.activeElement?.id;
-      render();
-      if (active) { const el = document.getElementById(active); if (el) { el.focus(); try { el.setSelectionRange(el.value.length, el.value.length); } catch {} } }
-    } else render();
+    const prev = state.data;
+    const next = await api('data');
+    TZ = next.tz || TZ;
+    $('#bot-dot').className = 'dot' + (next.botOk ? '' : ' off');
+    $('#bot-label').textContent = next.botOk ? 'المدرب متصل' : 'المدرب غير متصل';
+    const changed = !prev || JSON.stringify(prev) !== JSON.stringify(next);
+    state.data = next;
+    if (soft) {
+      const typing = /INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName ?? '');
+      if (typing) { if (changed || pendingRender) pendingRender = true; return; }
+      if (!changed && !pendingRender) return;
+    }
+    pendingRender = false;
+    render();
   } catch (e) {
     if (!soft) $('#view').innerHTML = `<div class="surface"><div class="empty">تعذر تحميل البيانات: ${esc(e.message)}</div></div>`;
   }
@@ -133,7 +141,9 @@ function rOverview(v) {
   }
 
   let startHtml;
-  if (notDone.length) {
+  if (live) {
+    startHtml = ''; // the live banner is up — no second class can start
+  } else if (notDone.length) {
     const multi = d.courses.length > 1;
     startHtml = `<div class="surface"><h2>تشغيل درس الآن</h2>
       <div class="frow">
@@ -176,15 +186,6 @@ function rOverview(v) {
     tick(); state.cd = setInterval(tick, 1000);
   }
 
-  const sorted = [...d.participants].sort((a, b) => b.xp - a.xp).slice(0, 5);
-  const lb = sorted.map((p, i) => `<tr class="r${i + 1}">
-    <td><span class="rank">${i + 1}</span></td>
-    <td><b>${esc(p.name)}</b></td>
-    <td>${p.xp}</td>
-    <td>${esc(p.level.name)}</td>
-    <td>سلسلة ${p.streak}</td>
-  </tr>`).join('');
-
   const o = d.overview;
   const qDone = d.quests.reduce((n, q) => n + (q.done || 0), 0);
   const summary = `<div class="surface" style="display:flex;gap:26px;flex-wrap:wrap;align-items:baseline">
@@ -196,13 +197,7 @@ function rOverview(v) {
 
   v.innerHTML = liveHtml + `<div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
     ${startHtml}${nextHtml}
-  </div>` + summary + `
-  <div class="surface"><h2>المتصدرون</h2>
-    <div class="tbl-wrap"><table>
-      <thead><tr><th></th><th>العضو</th><th>النقاط</th><th>المستوى</th><th>السلسلة</th></tr></thead>
-      <tbody>${lb || `<tr><td colspan="5" class="empty">لا نقاط بعد — تبدأ النقاط بأول حصة.</td></tr>`}</tbody>
-    </table></div>
-  </div>`;
+  </div>` + summary;
 }
 
 /* ============ LIVE PLAYER (تحكم بالبث) ============ */
@@ -272,6 +267,23 @@ function readCadence(p) {
   if (mode === 'interval') body.everyN = +$('#' + p + '-n').value || 2;
   return body;
 }
+// clear message before sending a bad cadence to the server
+function cadenceError(p) {
+  const c = readCadence(p);
+  if (!/^\d{1,2}:\d{2}$/.test(c.time)) return 'اكتب وقت الحصة بصيغة SS:DD — مثال 21:00';
+  if (c.mode === 'days' && !c.days) return 'حدّد أيام الدورة (مثال: الأحد,الأربعاء) أو اختر «كل يوم»';
+  if (c.mode === 'interval' && (!(c.everyN >= 1) || c.everyN > 30)) return '«كل كم يوم» يجب أن يكون بين 1 و 30';
+  return null;
+}
+// ISO (UTC) -> 'YYYY-MM-DD HH:mm' in the academy timezone, for date/time inputs
+const dtLocal = iso => {
+  const parts = {};
+  for (const x of new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date(iso))) if (x.type !== 'literal') parts[x.type] = x.value;
+  return `${parts.year}-${parts.month}-${parts.day} ${(parts.hour === '24' ? '00' : parts.hour)}:${parts.minute}`;
+};
 function tplMode(p) {
   const mode = $('#' + p + '-mode').value;
   $('#' + p + '-days-wrap').hidden = mode === 'interval';
@@ -311,6 +323,8 @@ function rCourses(v) {
 async function createCourse() {
   const title = $('#nc-title').value.trim();
   if (!title) return toast('اكتب عنوان الدورة أولاً', true);
+  const err = cadenceError('nc');
+  if (err) return toast(err, true);
   const btn = $('#nc-btn');
   btn.disabled = true;
   btn.innerHTML = 'جارٍ الإنشاء والاستيراد…';
@@ -388,8 +402,8 @@ function rCourse(v) {
     <td>${s.parts > 1 ? `<span class="pill plain">الجزء ${s.part}/${s.parts}</span><div class="vdim">من ${fmtMin(s.from_min)}${s.to_min != null ? ' إلى ' + fmtMin(s.to_min) : ''}</div>` : '<span class="vdim">كامل</span>'}</td>
     <td>${s.status === 'live' ? '<span class="pill bad">مباشر</span>' : `<span class="dim">${fmt(s.scheduled_at)}</span>`}</td>
     <td class="actions"><div class="acts" dir="ltr">
-      <input type="date" id="sd-${s.id}" value="${s.scheduled_at.slice(0, 10)}" style="padding:5px 8px;width:132px">
-      <input type="time" id="st-${s.id}" value="${s.scheduled_at.slice(11, 16)}" style="padding:5px 8px;width:86px">
+      <input type="date" id="sd-${s.id}" value="${dtLocal(s.scheduled_at).slice(0, 10)}" style="padding:5px 8px;width:132px">
+      <input type="time" id="st-${s.id}" value="${dtLocal(s.scheduled_at).slice(11)}" style="padding:5px 8px;width:86px">
       <button class="btn quiet sm" onclick="moveSess(${s.id})">نقل</button>
       <button class="btn danger sm icon" title="إلغاء" onclick="act('session/cancel',{id:${s.id}})">${icon('x')}</button>
     </div></td>
@@ -430,10 +444,9 @@ function rCourse(v) {
       ${[1, 2, 3, 4].map(n => `<div style="flex:1;min-width:120px"><label>الخيار ${n}</label><input id="q-opt${n}" ${n <= 2 ? '' : 'placeholder="اختياري"'}></div>`).join('')}
       <div style="flex:0;min-width:120px"><label>الإجابة الصحيحة</label>
         <select id="q-correct" style="width:100%"><option value="0">الخيار 1</option><option value="1">الخيار 2</option><option value="2">الخيار 3</option><option value="3">الخيار 4</option></select></div>
-      <div style="flex:0;min-width:80px"><label>النقاط</label><input id="q-xp" type="number" value="10" style="width:100%"></div>
       <div style="flex:0"><button class="btn" onclick="addQuestion()">${icon('plus')} إضافة</button></div>
     </div>
-    <div class="vdim" style="margin-top:9px">عند انتهاء حصة الدرس يُرسل سؤاله في قناة الإعلانات بأزرار اختيار — أول إجابة صحيحة تكسب النقاط.</div>
+    <div class="vdim" style="margin-top:9px">عند انتهاء حصة الدرس يُرسل سؤاله في قناة الإعلانات بأزرار اختيار — كن أول من يجيب إجابة صحيحة.</div>
     <div class="tbl-wrap" style="margin-top:12px"><table>
       <thead><tr><th>السؤال</th><th>الدرس</th><th>الإجابات</th><th></th></tr></thead>
       <tbody>${(d.questions || []).filter(q => q.course_id === c.id).map(q => `<tr>
@@ -543,6 +556,8 @@ async function moveSess(id) {
 async function saveCourse() {
   const title = $('#c-title').value.trim();
   if (!title) return toast('العنوان مطلوب', true);
+  const err = cadenceError('tpl');
+  if (err) return toast(err, true);
   await act('course/update', { id: state.courseId, title, ...readCadence('tpl') });
 }
 async function genCourse() {
@@ -562,7 +577,6 @@ async function addQuestion() {
     lessonId: $('#q-lesson').value || null,
     question, options,
     correctIndex: +$('#q-correct').value,
-    xp: +$('#q-xp').value || 10,
   });
 }
 
@@ -654,9 +668,7 @@ function rMembers(v) {
 
   const rows = list.map(p => `<tr style="cursor:pointer" onclick="openMember('${p.user_id}')">
     <td><b>${esc(p.name)}</b>${p.dms_enabled ? '' : ' <span class="pill warn">مكتوم الإشعارات</span>'}</td>
-    <td>${p.xp}</td>
-    <td>${esc(p.level.name)}</td>
-    <td>${p.streak}</td>
+    <td>سلسلة ${p.streak}</td>
     <td>${p.lessons_done}/${d.lessons.length}</td>
     <td class="dim">${p.last_activity ? fmt(p.last_activity) : '—'}</td>
   </tr>`).join('');
@@ -670,8 +682,8 @@ function rMembers(v) {
   </div>
   <div class="surface"><h2>الأعضاء</h2>
     <div class="tbl-wrap"><table>
-      <thead><tr><th>العضو</th><th>النقاط</th><th>المستوى</th><th>السلسلة</th><th>الدروس</th><th>آخر نشاط</th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="6" class="empty">${q ? 'لا نتائج للبحث «' + esc(q) + '»' : 'لا أعضاء بعد.<br><b>يظهر العضو هنا من لحظة أول حضور أو أول درس يكمله.</b>'}</td></tr>`}</tbody>
+      <thead><tr><th>العضو</th><th>السلسلة</th><th>الدروس</th><th>آخر نشاط</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="4" class="empty">${q ? 'لا نتائج للبحث «' + esc(q) + '»' : 'لا أعضاء بعد.<br><b>يظهر العضو هنا من لحظة أول حضور أو أول درس يكمله.</b>'}</td></tr>`}</tbody>
     </table></div>
   </div>`;
   const inp = $('#msearch');
@@ -720,7 +732,7 @@ async function openMember(id) {
     <div class="d-head">
       <div>
         <h2>${esc(m.name)}</h2>
-        <div class="d-sub">${m.xp} نقطة · ${esc(m.level.name)} · سلسلة ${m.streak} · ${m.lessons_done}/${state.data.lessons.length} درساً</div>
+        <div class="d-sub">سلسلة ${m.streak} · ${m.lessons_done}/${state.data.lessons.length} درساً · ${m.dms_enabled ? 'الإشعارات مفعّلة' : 'مكتوم الإشعارات'}</div>
       </div>
       <button class="d-close" onclick="closeDrawer()" aria-label="إغلاق">${icon('x')}</button>
     </div>
