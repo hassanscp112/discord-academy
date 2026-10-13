@@ -5,6 +5,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 import puppeteer from 'puppeteer-core';
+
+// قائمة تسلسل: بطاقة واحدة فقط في كل لحظة — كروميوم الجهاز لا يتحمل التوازي
+let renderQueue = Promise.resolve();
+export function renderCard(html, opts = {}) {
+  const run = renderQueue.then(() => doRender(html, opts));
+  renderQueue = run.catch(() => {});
+  return run;
+}
 const FONTS_CSS = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fonts.css'), 'utf8');
 
 // هُدَى emblem, inlined as a data URI so setContent() renders it without a server
@@ -36,6 +44,7 @@ async function getBrowser() {
       executablePath: exePath(),
       headless: true,
       args: ['--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--force-color-profile=srgb', '--font-render-hinting=none'],
+      protocolTimeout: 90000,
     }).then(b => { browser = b; launching = null; return b; })
       .catch(e => { console.log('[card] browser launch failed:', e.message); launching = null; return null; });
   }
@@ -47,7 +56,7 @@ async function getBrowser() {
 let pagePool = null;
 export async function warmCardRenderer() { await getBrowser(); }
 
-export async function renderCard(html, { width = 860 } = {}) {
+async function doRender(html, { width = 860 } = {}) {
   const b = await getBrowser();
   if (!b) return null;
   try {
