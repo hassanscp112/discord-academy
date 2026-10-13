@@ -444,6 +444,9 @@ export async function handleButton(interaction) {
     const course = A.getCourse(parseInt(action, 10));
     if (!course) return interaction.reply({ content: 'الدورة غير موجودة.', ephemeral: true });
     const on = A.toggleCourseSub(course.id, interaction.user.id, interaction.member?.displayName ?? interaction.user.username);
+    if (course.role_id && interaction.member?.roles) {
+      try { on ? await interaction.member.roles.add(course.role_id) : await interaction.member.roles.remove(course.role_id); } catch {}
+    }
     await interaction.deferUpdate();
     await interaction.editReply(await memberDashPayload(interaction.user.id, 'subs'));
     return interaction.followUp({
