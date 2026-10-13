@@ -15,6 +15,7 @@ import { markMemberDirty, refreshMemberDashboards } from './memberdash.js';
 const run = (sql, ...p) => getDb().prepare(sql).run(...p);
 const fill = (text, vars) => text.replace(/\{\{(\w+)\}\}/g, (_, k) => vars?.[k] ?? '');
 const urlLine = url => (url ? `▶️ ${url}` : '');
+const subBtn = lesson => new ButtonBuilder().setCustomId(`csub:${lesson.course_id}`).setLabel('🔔 اشترك بالدورة').setStyle(ButtonStyle.Primary);
 const pingTag = () => { const r = getSetting('ping_role'); return r ? `<@&${r}>` : '@here'; };
 // who to ping for a course: its opt-in subscribers, else the academy-wide role
 function pingFor(lesson) {
@@ -101,7 +102,7 @@ export async function tick({ client = null, bus, now = new Date() } = {}) {
     // T-remMin: reminder + warm the audio cache for class time
     if (s.status === 'scheduled' && now >= t.getTime() - remMin * 60000 && now < t) {
       prefetch(s.lesson_id, lesson.url);
-      await bus.postTo('channel_dashboard', { content: fill(templates.reminder, { ...vars, when: humanDuration(t - now) }) });
+      await bus.postTo('channel_dashboard', { content: fill(templates.reminder, { ...vars, when: humanDuration(t - now) }), components: [new ActionRowBuilder().addComponents(subBtn(lesson))] });
       run("UPDATE sessions SET status = 'reminded' WHERE id = ?", s.id);
       continue;
     }
@@ -114,7 +115,8 @@ export async function tick({ client = null, bus, now = new Date() } = {}) {
       const msg = await bus.postTo('channel_dashboard', {
         content: fill(templates.starting, vars),
         components: [new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`sess:finish:${s.id}`).setLabel('Finish session').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`sess:finish:${s.id}`).setLabel('🏁 إنهاء الحصة').setStyle(ButtonStyle.Success),
+          subBtn(lesson),
         )],
       });
       run("UPDATE sessions SET status = 'live', live_post_id = ? WHERE id = ?", msg?.id ?? '', s.id);
@@ -190,7 +192,8 @@ export async function startSessionNow({ client = null, bus, lessonId, now = new 
   const msg = await bus.postTo('channel_dashboard', {
     content: fill(templates.starting, vars),
     components: [new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`sess:finish:${s.id}`).setLabel('Finish session').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`sess:finish:${s.id}`).setLabel('🏁 إنهاء الحصة').setStyle(ButtonStyle.Success),
+      subBtn(lesson),
     )],
   });
   run("UPDATE sessions SET status = 'live', live_post_id = ? WHERE id = ?", msg?.id ?? '', s.id);

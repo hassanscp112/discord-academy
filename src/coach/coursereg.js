@@ -1,9 +1,9 @@
 // قناة التسجيل بالدورات: لكل دورة بطاقة ثابتة فيها زر «🔔 الاشتراك» —
 // الضغط يضيف العضو لقائمة التنبيهات ويمنحه رول الدورة (يُنشأ تلقائيًا)،
 // فيصبح الping على شكل منشن للرول بدل المنشن الفردي.
-import { ChannelType, PermissionFlagsBits, OverwriteType, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import * as A from '../core/academy.js';
-import { getDb } from '../core/db.js';
+import { getDb, getSetting } from '../core/db.js';
 import { config } from '../core/config.js';
 import { fmtInTz } from '../core/time.js';
 
@@ -45,26 +45,22 @@ function cardRows(courseId) {
   )];
 }
 
+// القناة الواحدة: إعلانات الأكاديمية — بطاقة الدورة الكبيرة تُنشر فيها مرة،
+// وزر الاشتراك يظهر مع كل رسالة حصة عادية (انظر sessions.js)
 async function ensureChannel(client) {
+  const id = getSetting('channel_dashboard');
+  if (!id) return null;
+  try { return await client.channels.fetch(id); } catch { return null; }
+}
+
+// تنظيف القناة القديمة المنفصلة (إن وُجدت) — البطاقات كلها في إعلانات الأكاديمية الآن
+async function removeLegacyChannel(client) {
   const guild = client.guilds.cache.get(config.guildId);
-  if (!guild) return null;
-  const existing = guild.channels.cache.find(c => c.name === CHANNEL_NAME && c.type === ChannelType.GuildText);
-  if (existing) return existing;
-  try {
-    const ch = await guild.channels.create({
-      name: CHANNEL_NAME, type: ChannelType.GuildText,
-      permissionOverwrites: [
-        { id: guild.roles.everyone, type: OverwriteType.Role, deny: [PermissionFlagsBits.SendMessages] },
-        { id: guild.client.user.id, type: OverwriteType.Member, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks, PermissionFlagsBits.ReadMessageHistory] },
-      ],
-    });
-    await ch.send('🔔 **مرحبًا بكم في قناة التسجيل بالدورات**\nاختر دورتك واضغط «🔔 الاشتراك» ليصلك تنبيه عند كل حصة جديدة.');
-    console.log('[coursereg] channel created:', ch.name);
-    return ch;
-  } catch (e) {
-    console.log('[coursereg] cannot create channel:', e.message);
-    return null;
-  }
+  if (!guild) return;
+  const old = guild.channels.cache.find(c => c.name === CHANNEL_NAME);
+  if (!old) return;
+  try { await old.delete(); console.log('[coursereg] legacy channel removed'); } catch (e) { console.log('[coursereg] legacy channel delete failed:', e.message); }
+  getDb().prepare('UPDATE courses SET reg_msg_id = NULL').run();
 }
 
 // رول الدورة — يُنشأ مرة واحدة ويُخزن مع الدورة
@@ -111,6 +107,7 @@ export async function handleSubscribe(interaction, courseId, wantJoin) {
 // مزامنة البطاقات: تنشر/تحدّث بطاقة كل دورة، وتحذف بطاقات الدورات الميتة
 export async function syncCourseCards(client) {
   if (!client?.isReady?.()) return;
+  await removeLegacyChannel(client);
   const ch = await ensureChannel(client);
   if (!ch) return;
   const courses = A.listCourses();
