@@ -208,3 +208,27 @@ export function listCardHTML({ icon, title, subtitle, rows }) {
   </div>
   `);
 }
+
+// ---------- 📊 academy dashboard card (public board channel) ----------
+export function academyCardHTML(d) {
+  const medal = ['🥇', '🥈', '🥉'];
+  const courses = d.courses.slice(0, 5).map(c => barRow(esc(c.title), c.next ? 'التالي: ' + c.next : 'مكتملة 🎉',
+    c.done, c.total, `${c.done}/${c.total}`)).join('');
+  const top = d.top.map((r, i) => `${medal[i] ?? '▫️'} **${esc(r.name ?? r.display_name ?? 'عضو')}** — ${r.xp} نقطة`).join('\n');
+  return page(`
+  <div class="top">
+    <div class="who"><img class="hlogo" src="${EMBLEM}" alt=""><div class="name">هُدَى · لوحة الأكاديمية</div></div>
+    <div class="pills"><span class="pill ghost">${esc(d.now)}</span></div>
+  </div>
+  <div class="body">
+  <div class="stats">
+    <div class="stat"><div class="v">${d.members}</div><div class="l">عضوًا</div></div>
+    <div class="stat"><div class="v">${d.lessonsDone}/${d.lessonsTotal}</div><div class="l">درسًا أُنجز</div></div>
+    <div class="stat"><div class="v">${d.booksRead}/${d.booksTotal}</div><div class="l">كتابًا قُرئ</div></div>
+  </div>
+  ${courses ? `<div class="sec"><h3>🎓 الدورات</h3>${courses}</div>` : ''}
+  ${top ? `<div class="sec"><h3>🏆 المتصدرون</h3><div style="font-size:15px;line-height:2">${top}</div></div>` : ''}
+  <div class="foot">تتحدث تلقائيًا بعد كل حدث في الأكاديمية · التسجيل من قناة الإعلانات</div>
+  </div>
+  `);
+}

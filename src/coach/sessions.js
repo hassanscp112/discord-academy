@@ -11,6 +11,7 @@ import { refreshDashboard, markDashboardDirty } from './dashboard.js';
 import { announceLevelUp } from './gamification.js';
 import { startStream, stopStream, prefetch } from './streamer.js';
 import { markMemberDirty, refreshMemberDashboards } from './memberdash.js';
+import { refreshAcademyDashboard } from './acadashboard.js';
 
 const run = (sql, ...p) => getDb().prepare(sql).run(...p);
 const fill = (text, vars) => text.replace(/\{\{(\w+)\}\}/g, (_, k) => vars?.[k] ?? '');
@@ -65,9 +66,9 @@ function streamOpts(session, lesson) {
 
 function sessRow(session) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`sess:move:${session.id}`).setLabel('Yes, move it').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(`sess:slots:${session.id}`).setLabel('Pick another time').setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`sess:skip:${session.id}`).setLabel('Skip this lesson').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId(`sess:move:${session.id}`).setLabel('👍 نعم انقلها').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`sess:slots:${session.id}`).setLabel('🗓️ وقت آخر').setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`sess:skip:${session.id}`).setLabel('⏭️ تجاوز الدرس').setStyle(ButtonStyle.Danger),
   );
 }
 
@@ -95,7 +96,7 @@ export async function tick({ client = null, bus, now = new Date() } = {}) {
     const endT = t.getTime() + (lesson.duration_min || 60) * 60000;
     const vars = {
       lesson_title: lesson.title, url_line: urlLine(lesson.url), url: lesson.url,
-      when: fmtInTz(t, config.tz), ping: pingFor(lesson), vc_name: 'study-room',
+      when: fmtInTz(t, config.tz), ping: pingFor(lesson), vc_name: 'الحصة',
       part_line: partLine(s),
     };
 
@@ -161,6 +162,7 @@ export async function tick({ client = null, bus, now = new Date() } = {}) {
   }
   await refreshDashboard(client);
   await refreshMemberDashboards(client).catch(e => console.log('[memberdash] sweep:', e.message));
+  refreshAcademyDashboard(client).catch(e => console.log('[acadash] sweep:', e.message));
 }
 
 // On-demand: pull the lesson's session to RIGHT NOW (create one if needed)
@@ -186,7 +188,7 @@ export async function startSessionNow({ client = null, bus, lessonId, now = new 
   }
   const vars = {
     lesson_title: lesson.title, url_line: urlLine(lesson.url), url: lesson.url,
-    when: fmtInTz(now, config.tz), ping: pingFor(lesson), vc_name: 'study-room',
+    when: fmtInTz(now, config.tz), ping: pingFor(lesson), vc_name: 'الحصة',
     part_line: partLine(s),
   };
   const msg = await bus.postTo('channel_dashboard', {
