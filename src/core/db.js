@@ -199,10 +199,13 @@ export function getDb(path = config.dbPath) {
       question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
       user_id TEXT NOT NULL,
       correct INTEGER NOT NULL,
-      answered_at TEXT NOT NULL,
+      answered_at TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (question_id, user_id)
     );
   `);
+  // v10 course registration: per-course Discord role + subscription card message
+  try { db.exec('ALTER TABLE courses ADD COLUMN role_id TEXT'); } catch {}
+  try { db.exec('ALTER TABLE courses ADD COLUMN reg_msg_id TEXT'); } catch {}
   if (db.prepare('SELECT COUNT(*) AS c FROM courses').get().c === 0) {
     // first boot on v4: one course holding all existing lessons, inheriting
     // the old global cadence (weekly_template_json) when one was saved

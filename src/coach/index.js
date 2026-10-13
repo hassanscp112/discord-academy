@@ -12,6 +12,7 @@ import { ensureLevelRoles } from './gamification.js';
 import { markMemberDirty, markAllMembersDirty, refreshMemberDashboards, postOnboarding } from './memberdash.js';
 import { initHealth, reportError } from './health.js';
 import { syncLibrary } from './library.js';
+import { syncCourseCards } from './coursereg.js';
 import { onUploadMessage, ensureUploadChannel, postUploadInstructions } from './uploads.js';
 import * as A from '../core/academy.js';
 
@@ -60,7 +61,8 @@ if (client) {
     // pinned onboarding guide in the announcements channel (idempotent)
     await postOnboarding(client).catch(e => log('onboarding:', e.message));
     // member library: every book gets a browsable card in its channel
-    await syncLibrary(client).catch(e => log('library sync:', e.message));
+    await syncCourseCards(client);
+  await syncLibrary(client).catch(e => log('library sync:', e.message));
     // mods PDF upload channel + its pinned instructions
     await ensureUploadChannel(client).catch(e => log('uploads:', e.message));
     await postUploadInstructions(client).catch(e => log('uploads:', e.message));

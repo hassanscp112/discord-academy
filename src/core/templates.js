@@ -1,45 +1,45 @@
-// Every message the Coach posts lives here. Edit freely — placeholders in
-// {{double_braces}} are filled in by the bot.
+// كل رسائل المدرب في مكان واحد — عدّل بحرية، والعناصر بين
+// {{الأقواس المزدوجة}} يعبّئها البوت تلقائيًا.
 
 export const templates = {
   reminder:
-    '📚 **Class in {{when}}!**\n' +
-    'We\'re covering **{{lesson_title}}**{{part_line}}\n' +
+    '📚 **الحصة بعد {{when}}!**\n' +
+    'سنشرح **{{lesson_title}}**{{part_line}}\n' +
     '{{url_line}}\n' +
-    '{{ping}} See you in 🔊 {{vc_name}}!',
+    '{{ping}} نراكم في 🔊 {{vc_name}}!',
 
   starting:
-    '🎬 **Class is starting NOW!** — **{{lesson_title}}**{{part_line}}\n' +
+    '🎬 **الحصة تبدأ الآن!** — **{{lesson_title}}**{{part_line}}\n' +
     '{{url_line}}\n' +
-    '{{ping}} I\'m in 🔊 {{vc_name}} playing the lesson audio.\n' +
-    '📺 **Want synced video?** Tap the 🚀 rocket in the voice channel → **Watch Together** → paste the link above.',
+    '{{ping}} أنا في 🔊 {{vc_name}} أُشغّل صوت الدرس.\n' +
+    '📺 **للمشاهدة المتزامنة:** اضغطوا صاروخ 🚀 في القاعة الصوتية ثم «شاهد معًا» وألصقوا رابط الدرس أعلاه.',
 
   missed:
-    '😴 **No one showed up** for **{{lesson_title}}** ({{when}}).\n' +
-    'Should we move it? React with your pick:\n' +
-    '👉 **Next slot:** {{proposed_when}}\n' +
-    '👍 = yes, move it there · 🗓️ = pick a different time · ⏭️ = skip this lesson',
+    '😴 **لم يحضر أحد** درس **{{lesson_title}}** ({{when}}).\n' +
+    'هل ننقله؟ اختاروا:\n' +
+    '👉 **الموعد المقترح:** {{proposed_when}}\n' +
+    '👍 = نعم انقلها إلى هذا الموعد · 🗓️ = اختر وقتًا آخر · ⏭️ = تجاوز هذا الدرس',
 
   missed_auto_moved:
-    '📆 The poll expired, so **{{lesson_title}}** was moved to **{{when}}** automatically.',
+    '📆 انتهى وقت التصويت، فتم نقل **{{lesson_title}}** تلقائيًا إلى **{{when}}**.',
 
   session_done:
-    '✅ **Session done** — nice work everyone who joined **{{lesson_title}}**!{{part_line}}\n' +
-    'Attendees earned **{{xp}} XP**. Don\'t forget to mark the lesson finished:',
+    '✅ **انتهت الحصة** — بارك الله في كل من حضر **{{lesson_title}}**!{{part_line}}\n' +
+    'للحاضرين **{{xp}} نقطة**. لا تنسوا تعليم الدرس كمكتمل:',
 
   completion_thanks:
-    '{{mention}} finished **{{lesson_title}}**! 🎉 (+{{xp}} XP)',
+    '{{mention}} أكمل **{{lesson_title}}**! 🎉 (+{{xp}} نقطة)',
 
   nudge_dm: [
-    'Hey {{member}}! 👋 Have you studied **{{lesson_title}}** yet? We noticed it\'s still open — you\'ve got a {{streak}} streak to protect 🔥',
-    '{{member}}, quick check-in: **{{lesson_title}}** is waiting for you. Even 20 minutes tonight keeps your {{streak}} streak alive 🔥',
-    'Psst {{member}} — **{{lesson_title}}** hasn\'t been marked done yet. Your {{streak}}-session streak is safe for now... don\'t let it slip 😄',
+    'سلام {{member}}! 👋 هل ذاكرت **{{lesson_title}}** حتى الآن؟ ما زال مفتوحًا — وعندك سلسلة {{streak}} أيام تحميها 🔥',
+    '{{member}}، تذكير سريع: **{{lesson_title}}** بانتظارك. عشرون دقيقة الليلة تكفي للحفاظ على سلسلتك {{streak}} 🔥',
+    'بيني وبينك {{member}} — **{{lesson_title}}** لم يُعلَّم كمكتمل بعد. سلسلتك {{streak}} آمنة حتى الآن… لا تدعها تنقطع 😄',
   ],
   nudge_channel:
-    '{{ping}} **Check-in!** Current lesson: **{{lesson_title}}** — mark it with ✅ on the lesson post when you\'re done. Current streak leaders are on the board 👀',
+    '{{ping}} **تذكير بالمواصلة!** الدرس الحالي: **{{lesson_title}}** — علّمه بـ ✅ في منشور الدرس عندما تنتهي. أصحاب أطول سلسلة على اللوحة 👀',
 
   level_up:
-    '🎉 {{mention}} leveled up to **{{emoji}} {{level_name}}** ({{xp}} XP)!',
+    '🎉 {{mention}} انتقل إلى **{{emoji}} {{level_name}}** ({{xp}} نقطة)!',
 
   quest_new:
     '{{kind}} في قائمة الإنجاز: **{{title}}**\nاضغط «أنجزتها ✅» عند الإتمام.',
@@ -55,14 +55,14 @@ export const templates = {
     '{{mark}} **{{name}}** — صفحة **{{page}}/{{pages}}**{{pct}}',
 
   recap:
-    '📋 **Weekly recap**\n' +
-    'Sessions held: **{{sessions}}** · Active members: **{{active}}**\n' +
-    '🏆 Top learner this week: {{top}}\n' +
-    'Lessons completed: **{{completions}}** · Quests finished: **{{quests}}**\n' +
+    '📋 **ملخص الأسبوع**\n' +
+    'الدروس المنعقدة: **{{sessions}}** · الأعضاء النشطون: **{{active}}**\n' +
+    '🏆 أكثر الأعضاء اجتهادًا هذا الأسبوع: {{top}}\n' +
+    'الدروس المكتملة: **{{completions}}** · الإنجازات المنجزة: **{{quests}}**\n' +
     '{{closing}}',
 
-  recap_closing: ['Keep the momentum going — see you at the next session! 💪', 'Great week. Rest, recharge, repeat. 🔁', 'Consistency beats intensity. Proud of this group. 👏'],
+  recap_closing: ['واصلوا الحماس — نراكم في الحصة القادمة! 💪', 'أسبوع رائع. راحة ثم عودة. 🔁', 'الاستمرارية خيرٌ من الكثرة. فخورون بكم. 👏'],
 
   welcome_dm:
-    'Welcome to the academy, {{member}}! 🎓\nI\'ll keep you posted about sessions here. Current lesson: **{{lesson_title}}**. You can mute me anytime with /optout.',
+    'أهلًا بك في الأكاديمية يا {{member}}! 🎓\nسأوافيك بكل جديد الدروس هنا. الدرس الحالي: **{{lesson_title}}**. يمكنك كتم رسائلي الخاصة في أي وقت بأمر /optout.',
 };

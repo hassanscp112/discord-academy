@@ -18,6 +18,8 @@ const urlLine = url => (url ? `▶️ ${url}` : '');
 const pingTag = () => { const r = getSetting('ping_role'); return r ? `<@&${r}>` : '@here'; };
 // who to ping for a course: its opt-in subscribers, else the academy-wide role
 function pingFor(lesson) {
+  const course = lesson?.course_id ? A.getCourse(lesson.course_id) : null;
+  if (course?.role_id) return `<@&${course.role_id}>`;
   const subs = lesson ? A.courseSubscribers(lesson.course_id) : [];
   if (subs.length) return subs.map(id => `<@${id}>`).join(' ');
   return pingTag();

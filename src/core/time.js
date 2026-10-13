@@ -109,9 +109,11 @@ export function nextSlots(template, from, count, tz) {
 
 export function humanDuration(ms) {
   const min = Math.round(ms / 60000);
-  if (min < 60) return `${min}m`;
+  if (min < 60) return min === 1 ? 'دقيقة واحدة' : min === 2 ? 'دقيقتين' : `${min} دقائق`;
   const h = Math.floor(min / 60), m = min % 60;
-  if (h < 24) return m ? `${h}h ${m}m` : `${h}h`;
+  const hs = h === 1 ? 'ساعة' : h === 2 ? 'ساعتين' : `${h} ساعات`;
+  if (h < 24) return m ? `${hs} و${m} دقيقة` : hs;
   const d = Math.floor(h / 24);
-  return `${d}d ${h % 24}h`;
+  const ds = d === 1 ? 'يوم' : d === 2 ? 'يومين' : `${d} أيام`;
+  return h % 24 ? `${ds} و${h % 24} ساعة` : ds;
 }

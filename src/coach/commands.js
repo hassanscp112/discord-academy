@@ -434,6 +434,11 @@ export async function handleButton(interaction) {
     return interaction.showModal(modal);
   }
 
+  // أزرار التسجيل بالدورات (قناة 🔔-التسجيل-بالدورات)
+  if (kind === 'csub' || kind === 'cunsub') {
+    return handleSubscribe(interaction, action, kind === 'csub');
+  }
+
   // per-course notification opt-in (member dashboard «الإشعارات» tab)
   if (kind === 'sub') {
     const course = A.getCourse(parseInt(action, 10));
