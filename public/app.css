@@ -143,7 +143,8 @@ input:focus,select:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,
 input::placeholder{color:var(--text-3)}
 label{display:block;font-size:13px;color:var(--text-2);margin:10px 0 5px;font-weight:500}
 .frow{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
-.frow>div{flex:1;min-width:130px}
+.frow>div{flex:1 1 130px;min-width:0}
+.frow input:not([type=checkbox]):not([type=range]),.frow select{width:100%}
 
 /* tables */
 .tbl-wrap{overflow-x:auto}

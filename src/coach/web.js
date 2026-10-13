@@ -154,7 +154,7 @@ export function startWeb({ client = null, bus }) {
         options: q.options, correct_index: q.correct_index, xp: q.xp,
         answers: getDb().prepare('SELECT COUNT(*) AS c FROM question_answers WHERE question_id = ?').get(q.id).c,
       })),
-      settings: { ...s, channel_dashboard_name: channelName(s.channel_dashboard), study_vc_name: channelName(s.study_vc) },
+      settings: { ...s, tz: s.tz || config.tz, channel_dashboard_name: channelName(s.channel_dashboard), study_vc_name: channelName(s.study_vc) },
       overview: { lessonsDone: o.lessons_done, lessonsTotal: o.lessons_total },
       template: tpl ? { ...tpl, daysText: cadenceText(tpl) } : null,
       live: live ? {

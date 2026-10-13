@@ -153,7 +153,7 @@ function rOverview(v) {
             return `<option value="${l.id}">${c ? esc(c.title) + ' — ' : ''}${l.position}. ${esc(l.title)}</option>`;
           }).join('')}
         </select></div>
-        <div style="flex:0"><button class="btn" onclick="act('action/start',{lessonId:+$('#pick-lesson').value})">${icon('play')} ابدأ الحصة</button></div>
+        <div style="flex:0 0 auto"><button class="btn" onclick="act('action/start',{lessonId:+$('#pick-lesson').value})">${icon('play')} ابدأ الحصة</button></div>
       </div>
       <div class="vdim" style="margin-top:9px">المدرب ينضم لغرفة الصوت ويشغّل صوت الدرس مباشرة.</div>
     </div>`;
@@ -358,7 +358,7 @@ function rCourse(v) {
     <div class="frow">
       <div style="flex:3;min-width:220px"><label>رابط قائمة يوتيوب</label><input id="pl-url" dir="ltr" placeholder="https://youtube.com/playlist?list=…"></div>
       <div style="flex:0;min-width:110px"><label>مدة الحصة (دقيقة)</label><input id="pl-dur" type="number" value="60" style="width:100%"></div>
-      <div style="flex:0"><button class="btn" id="pl-btn" onclick="importPlaylist()">${icon('plus')} استيراد</button></div>
+      <div style="flex:0 0 auto"><button class="btn" id="pl-btn" onclick="importPlaylist()">${icon('plus')} استيراد</button></div>
     </div>
     <div class="vdim" style="margin-top:9px">كل فيديو يصبح درساً بعنوانه. الفيديو الأطول من مدة الحصة يُقسَّم تلقائياً على حصص متتالية، وكل حصة تكمل من حيث توقّفت السابقة.</div>
   </div>`;
@@ -368,7 +368,7 @@ function rCourse(v) {
       <div style="flex:3;min-width:200px"><label>العنوان</label><input id="nl-title" placeholder="مثال: الدرس الأول — المدخلات"></div>
       <div style="flex:3;min-width:200px"><label>رابط يوتيوب <span class="vdim">(بدونه لن يعمل البث)</span></label><input id="nl-url" dir="ltr" placeholder="https://youtube.com/watch?v=…"></div>
       <div style="flex:0;min-width:86px"><label>الدقائق</label><input id="nl-dur" type="number" value="60" style="width:100%"></div>
-      <div style="flex:0"><button class="btn" onclick="addLesson()">${icon('plus')} إضافة</button></div>
+      <div style="flex:0 0 auto"><button class="btn" onclick="addLesson()">${icon('plus')} إضافة</button></div>
     </div>
   </div>`;
 
@@ -444,7 +444,7 @@ function rCourse(v) {
       ${[1, 2, 3, 4].map(n => `<div style="flex:1;min-width:120px"><label>الخيار ${n}</label><input id="q-opt${n}" ${n <= 2 ? '' : 'placeholder="اختياري"'}></div>`).join('')}
       <div style="flex:0;min-width:120px"><label>الإجابة الصحيحة</label>
         <select id="q-correct" style="width:100%"><option value="0">الخيار 1</option><option value="1">الخيار 2</option><option value="2">الخيار 3</option><option value="3">الخيار 4</option></select></div>
-      <div style="flex:0"><button class="btn" onclick="addQuestion()">${icon('plus')} إضافة</button></div>
+      <div style="flex:0 0 auto"><button class="btn" onclick="addQuestion()">${icon('plus')} إضافة</button></div>
     </div>
     <div class="vdim" style="margin-top:9px">عند انتهاء حصة الدرس يُرسل سؤاله في قناة الإعلانات بأزرار اختيار — كن أول من يجيب إجابة صحيحة.</div>
     <div class="tbl-wrap" style="margin-top:12px"><table>
@@ -466,8 +466,8 @@ function rCourse(v) {
     </div>
     <div class="frow" style="margin-top:4px">
       ${cadenceFields('tpl', c)}
-      <div style="flex:0"><button class="btn quiet" onclick="saveCourse()">حفظ</button></div>
-      <div style="flex:0"><button class="btn" onclick="genCourse()">${icon('bolt')} جدولة تلقائية</button></div>
+      <div style="flex:0 0 auto"><button class="btn quiet" onclick="saveCourse()">حفظ</button></div>
+      <div style="flex:0 0 auto"><button class="btn" onclick="genCourse()">${icon('bolt')} جدولة تلقائية</button></div>
     </div>
     <div class="vdim" style="margin-top:9px">الإيقاع خاص بهذه الدورة وحدها — «جدولة تلقائية» توزع دروسها غير المكتملة على مواعيده بالترتيب، والدرس الطويل يأخذ عدة مواعيد متتالية.</div>
     <div style="margin-top:14px"><button class="btn danger sm" onclick="delCourse(${c.id},${JSON.stringify(c.title).replace(/"/g, '&quot;')})">${icon('trash')} حذف الدورة بدروسها ومواعيدها</button></div>
@@ -624,14 +624,14 @@ function rBooks(v) {
     <div class="frow">
       <div style="flex:3;min-width:200px"><label>عنوان الكتاب</label><input id="bk-title" placeholder="مثال: رياض الصالحين"></div>
       <div style="flex:0;min-width:110px"><label>عدد الصفحات</label><input id="bk-pages" type="number" value="200" style="width:100%"></div>
-      <div style="flex:0"><button class="btn" onclick="addBook()">${icon('plus')} إضافة كتاب</button></div>
+      <div style="flex:0 0 auto"><button class="btn" onclick="addBook()">${icon('plus')} إضافة كتاب</button></div>
     </div>
   </div>
   <div class="surface"><h2>مجموعة قراءة جديدة</h2>
     <div class="frow">
       <div style="flex:2;min-width:170px"><label>اسم المجموعة <span class="vdim">(اختياري)</span></label><input id="gr-title" placeholder="افتراضياً اسم الكتاب"></div>
       <div style="flex:2;min-width:200px"><label>الكتاب</label><select id="gr-book" style="width:100%">${bookOpts}</select></div>
-      <div style="flex:0"><button class="btn" onclick="addGroup()">${icon('plus')} إنشاء وإعلان</button></div>
+      <div style="flex:0 0 auto"><button class="btn" onclick="addGroup()">${icon('plus')} إنشاء وإعلان</button></div>
     </div>
     <div class="vdim" style="margin-top:9px">يُعلن عنها في الديسكورد مع زر «📖 أنضم» وزر «📝 سجّل صفحتك» — كل عضو يسجّل الصفحة التي وصل إليها وتظهر لك هنا مباشرة.</div>
   </div>
@@ -794,7 +794,7 @@ function rQuests(v) {
     <div class="frow">
       <div style="max-width:170px"><label>الفئة</label><select id="q-cat">${catOpts}</select></div>
       <div style="flex:2"><label>العنوان</label><input id="q-title" placeholder="مثال: كتاب فن اللامبالاة"></div>
-      <div style="flex:0;align-self:flex-end"><button class="btn" onclick="addQuest()">${icon('plus')} إضافة</button></div>
+      <div style="flex:0 0 auto;align-self:flex-end"><button class="btn" onclick="addQuest()">${icon('plus')} إضافة</button></div>
     </div>
     <div class="vdim" style="margin-top:9px">يُعلن العنصر في قناة الديسكورد مع زر «أنجزتها ✅» يضغطه كل طالب عند إتمامه، وتظهر النتيجة هنا مباشرة.</div>
   </div>

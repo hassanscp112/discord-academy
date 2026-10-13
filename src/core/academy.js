@@ -2,6 +2,7 @@
 // here. Both the Coach and the AI Admin studio build on this.
 import { getDb, getSetting, setSetting, getTemplate, getLevels } from './db.js';
 import { nextSlots, normalizeTemplate } from './time.js';
+import { config } from './config.js';
 
 const nowIso = () => new Date().toISOString();
 
@@ -191,7 +192,7 @@ export function generateScheduleForCourse(courseId, { count = null, from = new D
   const partInfo = new Map(planned.map(l => [l.id, lessonParts(l)]));
   const totalParts = planned.reduce((n, l) => n + partInfo.get(l.id).parts, 0);
   const wanted = Math.min(count ?? totalParts, totalParts);
-  const slots = nextSlots(course.template, from, wanted, getSetting('tz', 'UTC'));
+  const slots = nextSlots(course.template, from, wanted, getSetting('tz') || config.tz);
   if (slots.length < wanted) throw new Error(`إيقاع الدورة أعطى ${slots.length} موعداً فقط لـ ${wanted} حصة (الفيديو الطويل يأخذ عدة مواعيد).`);
   const ins = getDb().prepare('INSERT INTO sessions (lesson_id, scheduled_at, offset_min) VALUES (?, ?, ?)');
   const created = [];
@@ -227,7 +228,7 @@ export function pushToNextSlot(sessionId, after = new Date()) {
   const session = getSession(sessionId);
   const course = session ? courseOfLesson(session.lesson_id) : null;
   if (!course?.template) throw new Error('The course has no cadence set.');
-  const slots = nextSlots(course.template, after, 4, getSetting('tz', 'UTC'));
+  const slots = nextSlots(course.template, after, 4, getSetting('tz') || config.tz);
   const used = new Set(listSessions({ future: true }).map(s => s.scheduled_at));
   const slot = slots.find(s => !used.has(s.toISOString())) ?? slots[0];
   if (!slot) throw new Error('No free slot found in the next weeks.');
@@ -752,7 +753,7 @@ export function overview() {
   const futureSessions = listSessions({ future: true, limit: 200 });
   return {
     now: nowIso(),
-    tz: getSetting('tz', 'UTC'),
+    tz: getSetting('tz') || config.tz,
     next_session: nextSession(),
     current_lesson: lesson,
     lessons_total: allLessons.length,
