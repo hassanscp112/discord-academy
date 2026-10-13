@@ -92,3 +92,32 @@ export async function refreshAcademyDashboard(client, { force = false } = {}) {
     setSetting('academy_dash_msg', m.id);
   } catch (e) { console.log('[acadash] refresh failed:', e.message); }
 }
+
+// ترتيب قناة اللوحة: مقدمة ← بطاقات الدورات ← الإحصاءات (مرة واحدة)
+export async function ensureHubOrder(client) {
+  if (!client?.isReady?.()) return;
+  if (getSetting('hub_order_v1')) return;
+  const ch = await ensureDashboardChannel(client);
+  if (!ch) return;
+  setSetting('hub_order_v1', '1');
+  try {
+    const mid = getSetting('academy_dash_msg');
+    if (mid) { (await ch.messages.fetch(mid)).delete().catch(() => {}); }
+  } catch {}
+  for (const c of getDb().prepare('SELECT reg_msg_id FROM courses WHERE reg_msg_id IS NOT NULL').all()) {
+    try { (await ch.messages.fetch(c.reg_msg_id)).delete().catch(() => {}); } catch {}
+  }
+  try {
+    const msgs = [...(await ch.messages.fetch({ limit: 50 })).values()];
+    const intro = msgs.find(m => m.components?.some(r => r.components.some(b => b.customId?.startsWith('onboard:'))));
+    if (intro) { await intro.unpin().catch(() => {}); await intro.delete().catch(() => {}); }
+  } catch {}
+  getDb().prepare('UPDATE courses SET reg_msg_id = NULL').run();
+  setSetting('academy_dash_msg', '');
+  const { postOnboarding } = await import('./memberdash.js');
+  await postOnboarding(client).catch(() => {});
+  const { syncCourseCards } = await import('./coursereg.js');
+  await syncCourseCards(client).catch(() => {});
+  await refreshAcademyDashboard(client, { force: true });
+  console.log('[acadash] hub order set: intro → courses → stats');
+}
