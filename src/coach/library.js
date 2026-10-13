@@ -34,7 +34,7 @@ async function ensureLibraryChannel(client) {
 async function postBookCard(client, ch, book) {
   const buf = await renderCard(bookCardHTML(book)).catch(() => null);
   const payload = buf
-    ? { files: [new AttachmentBuilder(buf, { name: 'book.png' })] }
+    ? { files: [new AttachmentBuilder(buf, { name: 'book.jpg' })] }
     : { content: `📖 **${book.title}** — ${book.total_pages} صفحة` };
   payload.components = [new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`bkpage:${book.id}`).setLabel('📝 سجّل صفحتك').setStyle(ButtonStyle.Success),

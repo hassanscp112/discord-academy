@@ -375,7 +375,7 @@ export async function memberDashPayload(userId, view = 'overview') {
       return {
         embeds: [],
         components: base.components,
-        files: [new AttachmentBuilder(buf, { name: 'card.png' })],
+        files: [new AttachmentBuilder(buf, { name: 'card.jpg' })],
         attachments: [], // replace the previous card on edits
       };
     }

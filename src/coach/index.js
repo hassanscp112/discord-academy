@@ -13,6 +13,7 @@ import { markMemberDirty, markAllMembersDirty, refreshMemberDashboards, postOnbo
 import { initHealth, reportError } from './health.js';
 import { syncLibrary } from './library.js';
 import { syncCourseCards } from './coursereg.js';
+import { warmCardRenderer } from './card.js';
 import { onUploadMessage, ensureUploadChannel, postUploadInstructions } from './uploads.js';
 import * as A from '../core/academy.js';
 
@@ -61,7 +62,8 @@ if (client) {
     // pinned onboarding guide in the announcements channel (idempotent)
     await postOnboarding(client).catch(e => log('onboarding:', e.message));
     // member library: every book gets a browsable card in its channel
-    await syncCourseCards(client);
+    warmCardRenderer().catch(() => {});
+  await syncCourseCards(client);
   await syncLibrary(client).catch(e => log('library sync:', e.message));
     // mods PDF upload channel + its pinned instructions
     await ensureUploadChannel(client).catch(e => log('uploads:', e.message));

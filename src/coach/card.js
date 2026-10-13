@@ -43,21 +43,26 @@ async function getBrowser() {
 }
 
 // html must contain one element with id="card" — that element is screenshotted
+// one reusable page — page creation is expensive on weak hardware
+let pagePool = null;
+export async function warmCardRenderer() { await getBrowser(); }
+
 export async function renderCard(html, { width = 860 } = {}) {
   const b = await getBrowser();
   if (!b) return null;
-  let page;
   try {
-    page = await b.newPage();
-    await page.setViewport({ width: width + 40, height: 600, deviceScaleFactor: 2 });
-    await page.setContent(html, { waitUntil: 'networkidle0', timeout: 15000 });
-    const el = await page.$('#card');
-    return await (el ?? page).screenshot({ type: 'png' });
+    if (!pagePool || !pagePool.isClosed?.()) {
+      pagePool = await b.newPage();
+      await pagePool.setViewport({ width: width + 40, height: 600, deviceScaleFactor: 1.5 });
+    }
+    await pagePool.setContent(html, { waitUntil: 'networkidle0', timeout: 15000 });
+    const el = await pagePool.$('#card');
+    return await (el ?? pagePool).screenshot({ type: 'jpeg', quality: 88 });
   } catch (e) {
     console.log('[card] render failed:', e.message);
+    await pagePool?.close().catch(() => {});
+    pagePool = null;
     return null;
-  } finally {
-    await page?.close().catch(() => {});
   }
 }
 
