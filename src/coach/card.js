@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 import puppeteer from 'puppeteer-core';
+const FONTS_CSS = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'fonts.css'), 'utf8');
 
 // هُدَى emblem, inlined as a data URI so setContent() renders it without a server
 const here = dirname(fileURLToPath(import.meta.url));
@@ -98,8 +99,7 @@ body{background:transparent}
 `;
 
 const page = body => `<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>${FONTS_CSS}</style>
 <style>${BASE_CSS}</style></head><body><div id="card">${body}</div></body></html>`;
 
 const barRow = (t, sub, done, total, rightText) => `
