@@ -22,7 +22,7 @@ const cadenceText = (tpl) => {
 function nextSessionOf(courseId) {
   return getDb().prepare(
     "SELECT s.scheduled_at, l.title AS lesson_title FROM sessions s JOIN lessons l ON l.id = s.lesson_id " +
-    "WHERE s.course_id = ? AND s.status IN ('scheduled','reminded','live') ORDER BY s.scheduled_at LIMIT 1"
+    "WHERE l.course_id = ? AND s.status IN ('scheduled','reminded','live') ORDER BY s.scheduled_at LIMIT 1"
   ).get(courseId);
 }
 
@@ -75,7 +75,7 @@ async function ensureRole(client, course) {
   let role = guild.roles.cache.find(r => r.name === name);
   if (!role) {
     try {
-      role = await guild.roles.create({ name, color: roleColor, mentionable: false, reason: `تنبيهات دورة ${course.title}` });
+      role = await guild.roles.create({ name, colors: [roleColor], mentionable: false, reason: `تنبيهات دورة ${course.title}` });
       console.log('[coursereg] role created:', name);
     } catch (e) {
       console.log('[coursereg] cannot create role (need Manage Roles):', e.message);
