@@ -119,7 +119,7 @@ export function buildMemberEmbed(userId) {
   const rank = A.xpLeaderboard(200).findIndex(r => r.user_id === userId) + 1;
   const embed = new EmbedBuilder()
     .setTitle(`📊 تقدمك في الأكاديمية`)
-    .setColor(0xe2a13c)
+    .setColor(0xC9992E)
     .setFooter({ text: viewFooter('overview') });
 
   embed.addFields({
@@ -245,7 +245,7 @@ export function buildMemberView(userId, view = 'overview') {
   let embed;
   if (view === 'overview') embed = buildMemberEmbed(userId);
   else if (view === 'courses') {
-    embed = new EmbedBuilder().setTitle('📖 دوراتي').setColor(0xe2a13c).setFooter({ text: viewFooter('courses') });
+    embed = new EmbedBuilder().setTitle('📖 دوراتي').setColor(0xC9992E).setFooter({ text: viewFooter('courses') });
     for (const c of A.listCourses()) {
       const cp = A.courseProgress(c.id, userId);
       embed.addFields({
@@ -256,7 +256,7 @@ export function buildMemberView(userId, view = 'overview') {
     }
     if (!embed.data.fields?.length) embed.setDescription('لا دورات بعد.');
   } else if (view === 'books') {
-    embed = new EmbedBuilder().setTitle('📚 كتبي').setColor(0xe2a13c).setFooter({ text: viewFooter('books') });
+    embed = new EmbedBuilder().setTitle('📚 كتبي').setColor(0xC9992E).setFooter({ text: viewFooter('books') });
     const shelf = A.bookShelf(userId);
     const started = shelf.filter(b => b.page > 0 || b.finished);
     const shown = started.length ? started : shelf.slice(0, 10);
@@ -266,7 +266,7 @@ export function buildMemberView(userId, view = 'overview') {
         : `📖 **${b.title}** — صفحة **${b.page}** من ${b.total_pages}`).join('\n').slice(0, 4000)
       : 'لا كتب بعد — انضم لمجموعة قراءة!');
   } else if (view === 'quests') {
-    embed = new EmbedBuilder().setTitle('📜 قائمة الإنجاز').setColor(0xe2a13c).setFooter({ text: viewFooter('quests') });
+    embed = new EmbedBuilder().setTitle('📜 قائمة الإنجاز').setColor(0xC9992E).setFooter({ text: viewFooter('quests') });
     const CAT = { book: '📖', lecture: '📺', course: '🎓' };
     const all = A.listQuests();
     const mine = new Set();
@@ -279,7 +279,7 @@ export function buildMemberView(userId, view = 'overview') {
       ? `${lines.join('\n').slice(0, 4000)}\n\n_أنجزت ${mine.size} من ${all.length}_`
       : 'القائمة فارغة.');
   } else if (view === 'subs') {
-    embed = new EmbedBuilder().setTitle('🔔 الإشعارات').setColor(0xe2a13c).setFooter({ text: viewFooter('subs') });
+    embed = new EmbedBuilder().setTitle('🔔 الإشعارات').setColor(0xC9992E).setFooter({ text: viewFooter('subs') });
     const subs = A.subscribedCourses(userId);
     const lines = A.listCourses().map(c =>
       `${subs.has(c.id) ? '🔔' : '🔕'} **${c.title}** — ${subs.has(c.id) ? 'ستُشعَر بحصص هذه الدورة' : 'بدون إشعار'}`);
@@ -380,7 +380,7 @@ export async function memberDashPayload(userId, view = 'overview') {
       };
     }
   } catch { /* no browser or render hiccup -> plain embed */ }
-  return base;
+  return { ...base, attachments: [] }; // clear any stale card image on edits
 }
 
 // a member-dashboard message: has our tab buttons (or the legacy footer mark)

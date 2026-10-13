@@ -64,32 +64,37 @@ export async function renderCard(html, { width = 860 } = {}) {
 const BASE_CSS = `
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:transparent}
-#card{width:860px;background:#14110c;border:1px solid #37301f;border-radius:18px;
-  padding:32px 36px;font-family:'Tajawal',Tahoma,'Segoe UI',sans-serif;color:#f3ecdc}
-.head{display:flex;justify-content:space-between;align-items:center;gap:14px;margin-bottom:20px}
-.who{display:flex;align-items:center;gap:13px;min-width:0}
-.hlogo{width:46px;height:46px;border-radius:50%;flex-shrink:0}
-.name{font-size:30px;font-weight:800;line-height:1.2}
+#card{width:860px;background:#FFFFFF;border:1px solid #E3E8F0;border-radius:14px;overflow:hidden;
+  font-family:'Tajawal',Tahoma,'Segoe UI',sans-serif;color:#22314E;
+  box-shadow:0 6px 24px rgba(22,41,79,.10)}
+.top{background:linear-gradient(135deg,#24468B 0%,#1E3A6E 55%,#152A52 100%);
+  padding:24px 32px;display:flex;justify-content:space-between;align-items:center;gap:14px}
+.who{display:flex;align-items:center;gap:14px;min-width:0}
+.hlogo{width:48px;height:48px;border-radius:12px;flex-shrink:0;background:#FFFFFF;padding:3px}
+.name{font-size:28px;font-weight:800;line-height:1.25;color:#FFFFFF}
 .pills{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-.pill{background:#2a2318;border:1px solid #4a4028;color:#e2a13c;font-weight:700;
-  font-size:14.5px;padding:6px 14px;border-radius:99px;white-space:nowrap}
+.pill{background:#C9992E;color:#16294F;font-weight:800;
+  font-size:14px;padding:6px 14px;border-radius:8px;white-space:nowrap}
+.pill.ghost{background:rgba(255,255,255,.10);color:#E4CE92;border:1px solid rgba(228,206,146,.45);font-weight:700}
+.body{padding:24px 32px 28px}
 .stats{display:flex;gap:12px}
-.stat{flex:1;background:#1a1610;border:1px solid #37301f;border-radius:12px;padding:13px 16px;text-align:center}
-.stat .v{font-size:25px;font-weight:800;color:#e2a13c}
-.stat .l{font-size:13px;color:#a89b80;margin-top:2px}
-.sec{margin-top:22px}
-.sec h3{font-size:16px;color:#cabda2;margin-bottom:10px;font-weight:700}
+.stat{flex:1;background:#F7F9FC;border:1px solid #E3E8F0;border-radius:10px;padding:13px 16px;text-align:center}
+.stat .v{font-size:24px;font-weight:800;color:#1E3A6E}
+.stat .l{font-size:13px;color:#75849B;margin-top:2px}
+.sec{margin-top:20px}
+.sec h3{font-size:15px;color:#2A4A8B;margin-bottom:10px;font-weight:800;display:flex;align-items:center;gap:8px}
+.sec h3::before{content:'';width:14px;height:4px;border-radius:4px;background:#C9992E;display:inline-block}
 .row{display:flex;align-items:center;gap:12px;margin-bottom:9px}
-.row .t{width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;font-size:15px}
-.track{flex:1;height:10px;background:#241d12;border:1px solid #2e2617;border-radius:8px;overflow:hidden}
-.fill{height:100%;background:#e2a13c;border-radius:8px;display:block}
-.row .n{font-size:13.5px;color:#a89b80;white-space:nowrap;min-width:66px;text-align:left;font-weight:700}
+.row .t{width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;font-size:15px;color:#22314E}
+.track{flex:1;height:10px;background:#E4EAF4;border-radius:6px;overflow:hidden}
+.fill{height:100%;background:linear-gradient(90deg,#C9992E,#DBAF41);border-radius:6px;display:block}
+.row .n{font-size:13.5px;color:#59687F;white-space:nowrap;min-width:66px;text-align:left;font-weight:700}
 .chip{font-size:13.5px;font-weight:700;white-space:nowrap}
-.chip.ok{color:#8ab87a}.chip.no{color:#6e6650}
-.next{margin-top:22px;background:#1a1610;border:1px solid #6b4d1e;border-radius:12px;
-  padding:15px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px}
-.next .w{color:#a89b80;font-size:13.5px;white-space:nowrap}
-.foot{margin-top:20px;color:#5e5540;font-size:12px;text-align:center}
+.chip.ok{color:#2F7D4F}.chip.no{color:#75849B}
+.next{margin-top:20px;background:#FAF4E3;border:1px solid #E4CE92;border-radius:10px;
+  padding:15px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px;color:#16294F}
+.next .w{color:#8F6B15;font-size:13.5px;white-space:nowrap;font-weight:700}
+.foot{margin-top:18px;color:#75849B;font-size:12px;text-align:center}
 `;
 
 const page = body => `<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
@@ -99,7 +104,7 @@ const page = body => `<!doctype html><html dir="rtl" lang="ar"><head><meta chars
 
 const barRow = (t, sub, done, total, rightText) => `
 <div class="row">
-  <div class="t">${t}${sub ? ` <span style="color:#6e6650;font-weight:500;font-size:12.5px">· ${sub}</span>` : ''}</div>
+  <div class="t">${t}${sub ? ` <span style="color:#75849B;font-weight:500;font-size:12.5px">· ${sub}</span>` : ''}</div>
   <div class="track"><i class="fill" style="width:${total ? Math.round((done / total) * 100) : 0}%"></i></div>
   <div class="n">${rightText}</div>
 </div>`;
@@ -115,14 +120,15 @@ export function memberCardHTML(d) {
     barRow(esc(b.title), b.finished ? 'أكمله 🎉' : '', b.page, b.total_pages,
       b.finished ? '✅' : `${b.page}/${b.total_pages}`)).join('');
   return page(`
-  <div class="head">
-    <div class="who"><img class="hlogo" src="${EMBLEM}" alt=""><div class="name">📊 ${esc(d.name)}</div></div>
+  <div class="top">
+    <div class="who"><img class="hlogo" src="${EMBLEM}" alt=""><div class="name">${esc(d.name)}</div></div>
     <div class="pills">
       <span class="pill">${esc(d.level.emoji)} ${esc(d.level.name)}</span>
-      ${d.rank ? `<span class="pill">🏅 المركز ${d.rank}</span>` : ''}
-      <span class="pill">🔥 ${d.streak}</span>
+      ${d.rank ? `<span class="pill ghost">🏅 المركز ${d.rank}</span>` : ''}
+      <span class="pill ghost">🔥 ${d.streak}</span>
     </div>
   </div>
+  <div class="body">
   <div class="stats">
     <div class="stat"><div class="v">${d.xp}</div><div class="l">نقطة</div></div>
     <div class="stat"><div class="v">${d.lessonsDone}/${d.lessonsTotal}</div><div class="l">درس مكتمل</div></div>
@@ -131,19 +137,20 @@ export function memberCardHTML(d) {
   ${courses ? `<div class="sec"><h3>📖 الدورات</h3>${courses}</div>` : ''}
   ${books ? `<div class="sec"><h3>📚 الكتب</h3>${books}</div>` : ''}
   ${d.nextSession ? `<div class="next"><b>${esc(d.nextSession.title)}</b><span class="w">⏰ ${esc(d.nextSession.when)}</span></div>` : ''}
-  <div class="foot">لوحة تقدمك في الأكاديمية — تتحدث تلقائياً بعد كل إنجاز</div>
+  <div class="foot">هُدَى · لوحة تقدمك — تتحدث تلقائيًا بعد كل إنجاز</div>
+  </div>
   `);
 }
 
 // ---------- library book card (one per book, posted in the library channel) ----------
 export function bookCardHTML(book) {
   return page(`
-  <div class="head">
+  <div class="top">
     <div class="who"><img class="hlogo" src="${EMBLEM}" alt=""><div class="name">📖 ${esc(book.title)}</div></div>
     <div class="pills"><span class="pill">${book.total_pages} صفحة</span></div>
   </div>
-  <div class="row" style="margin-top:6px">
-    <div class="t" style="width:auto;color:#a89b80;font-weight:500">من مكتبة الأكاديمية — اضغط «📝 سجّل صفحتك» بالأسفل وابدأ تتبع قراءتك، حتى ولو بدأت من الصفحة الأولى. وصولك لآخر صفحة يعني إنهاء الكتاب 🎉</div>
+  <div class="body" style="padding:20px 32px 24px">
+    <div style="color:#59687F;font-size:14.5px;line-height:1.7">من مكتبة الأكاديمية — اضغط «📝 سجّل صفحتك» بالأسفل وابدأ تتبع قراءتك، حتى ولو بدأت من الصفحة الأولى. وصولك لآخر صفحة يعني إنهاء الكتاب 🎉</div>
   </div>
   `);
 }
@@ -152,16 +159,17 @@ export function bookCardHTML(book) {
 export function onboardingCardHTML() {
   const step = (n, t, d) => `
   <div style="display:flex;gap:14px;margin-bottom:14px;align-items:flex-start">
-    <div style="width:34px;height:34px;border-radius:10px;background:#2a2318;border:1px solid #4a4028;color:#e2a13c;
+    <div style="width:34px;height:34px;border-radius:10px;background:#EEF2F8;border:1px solid #E4CE92;color:#C9992E;
       font-weight:800;font-size:17px;display:flex;align-items:center;justify-content:center;flex-shrink:0">${n}</div>
     <div><div style="font-weight:800;font-size:16px">${t}</div>
-    <div style="color:#a89b80;font-size:14px;margin-top:2px;line-height:1.5">${d}</div></div>
+    <div style="color:#59687F;font-size:14px;margin-top:2px;line-height:1.5">${d}</div></div>
   </div>`;
   return page(`
-  <div class="head">
-    <div class="who"><img class="hlogo" src="${EMBLEM}" alt=""><div class="name">🎓 أهلاً بك في الأكاديمية</div></div>
+  <div class="top">
+    <div class="who"><img class="hlogo" src="${EMBLEM}" alt=""><div class="name">🎓 أهلاً بك في هُدَى</div></div>
     <div class="pills"><span class="pill">دورات · حصص مباشرة · كتب</span></div>
   </div>
+  <div class="body">
   ${step(1, '🔊 احضر الحصة المباشرة',
     'في موعد الحصة يدخل المدرب غرفة الصوت ويشغّل صوت الدرس — ادخل الغرفة فقط، وكل دقيقة حضور تُحسب في نقاطك وسلسلتك.')}
   ${step(2, '📊 لوحتك الخاصة',
@@ -175,6 +183,7 @@ export function onboardingCardHTML() {
   <div class="next"><b>أوامر سريعة</b>
     <span class="w">/myprogress · /books · /group · /leaderboard</span></div>
   <div class="foot">ابدأ الآن: ادخل أول حصة وستجد لوحتك جاهزة</div>
+  </div>
   `);
 }
 // rows: { t, sub, done, total, right } or { t, ok } for plain status rows
@@ -184,11 +193,13 @@ export function listCardHTML({ icon, title, subtitle, rows }) {
     : `<div class="row"><div class="t">${esc(r.t)}</div><div style="flex:1"></div><span class="chip ${r.ok ? 'ok' : 'no'}">${r.ok ? '✅ أنجزته' : '⬜ لم ينجزه بعد'}</span></div>`
   ).join('');
   return page(`
-  <div class="head">
+  <div class="top">
     <div class="who"><img class="hlogo" src="${EMBLEM}" alt=""><div class="name">${icon} ${esc(title)}</div></div>
     ${subtitle ? `<div class="pills"><span class="pill">${esc(subtitle)}</span></div>` : ''}
   </div>
-  ${body || '<div class="row"><div class="t" style="color:#6e6650">لا يوجد شيء هنا بعد</div></div>'}
-  <div class="foot">الأكاديمية</div>
+  <div class="body">
+  ${body || '<div class="row"><div class="t" style="color:#75849B">لا يوجد شيء هنا بعد</div></div>'}
+  <div class="foot">هُدَى</div>
+  </div>
   `);
 }
