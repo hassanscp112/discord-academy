@@ -3,7 +3,7 @@
 // فيصبح الping على شكل منشن للرول بدل المنشن الفردي.
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import * as A from '../core/academy.js';
-import { getDb, getSetting } from '../core/db.js';
+import { getDb, getSetting, setSetting } from '../core/db.js';
 import { config } from '../core/config.js';
 import { fmtInTz } from '../core/time.js';
 import { ensureDashboardChannel } from './acadashboard.js';
@@ -137,4 +137,35 @@ export async function syncCourseCards(client) {
     try { const msg = await ch.messages.fetch(c.reg_msg_id); await msg.delete(); } catch {}
     getDb().prepare('UPDATE courses SET reg_msg_id = NULL WHERE id = ?').run(c.id);
   }
+}
+
+// «متعلم» — الرول العام: كل من يتفاعل مع الأكاديمية يحصل عليه،
+// وعبره تُبَلَّغ الدورات الجديدة ومجموعات القراءة وغيرها.
+export async function ensureLearnerRole(client) {
+  const guild = client.guilds.cache.get(config.guildId);
+  if (!guild) return null;
+  const id = getSetting('learner_role_id');
+  if (id && guild.roles.cache.has(id)) return id;
+  let role = guild.roles.cache.find(r => r.name === 'متعلم');
+  if (!role) {
+    try {
+      role = await guild.roles.create({ name: 'متعلم', color: 0x1E3A6E, mentionable: true, reason: 'إعلانات الأكاديمية العامة' });
+      console.log('[coursereg] learner role created');
+    } catch (e) { console.log('[coursereg] learner role create failed:', e.message); return null; }
+  }
+  setSetting('learner_role_id', role.id);
+  return role.id;
+}
+
+export function learnerPing() {
+  const id = getSetting('learner_role_id');
+  return id ? `<@&${id}>` : '';
+}
+
+export async function grantLearnerRole(interaction) {
+  try {
+    const roleId = getSetting('learner_role_id');
+    const member = interaction?.member;
+    if (roleId && member?.roles && !member.roles.cache.has(roleId)) await member.roles.add(roleId, 'متعلم في الأكاديمية');
+  } catch {}
 }

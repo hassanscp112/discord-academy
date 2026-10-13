@@ -221,16 +221,25 @@ export function startWeb({ client = null, bus }) {
     let added = 0, skipped = 0;
     if (/^https?:\/\//i.test(String(b.playlistUrl ?? '').trim())) {
       try {
+        const { learnerPing, syncCourseCards } = await import('./coursereg.js');
         const pl = await fetchPlaylist(String(b.playlistUrl).trim());
         const imp = A.importPlaylist(pl.entries, { durationMin: Math.max(10, +b.durationMin || 60), courseId: id });
         added = imp.added.length; skipped = imp.skipped;
         if (added && client) {
           const ch = await client.channels.fetch(getSetting('channel_dashboard')).catch(() => null);
-          if (ch) await ch.send(`📚 دورة جديدة **«${b.title.trim()}»** — أُضيف **${added}** درساً من قائمة «${pl.title ?? 'التشغيل'}»${skipped ? ` (${skipped} موجود مسبقاً)` : ''}.`).catch(() => null);
+          if (ch) await ch.send(`${learnerPing()} 🎓 دورة جديدة **«${b.title.trim()}»** — أُضيف **${added}** درساً من قائمة «${pl.title ?? 'التشغيل'}»${skipped ? ` (${skipped} موجود مسبقاً)` : ''}.
+للاشتراك بتنبيهاتها: قناة **📊 لوحة الأكاديمية**`).catch(() => null);
+          syncCourseCards(client).catch(() => {});
         }
       } catch (e) {
         return ok(res, `أُنشئت الدورة «${b.title.trim()}» لكن تعذّر استيراد القائمة: ${e.message}`);
       }
+    }
+    if (!added && client) {
+      const { learnerPing, syncCourseCards } = await import('./coursereg.js');
+      const ch = await client.channels.fetch(getSetting('channel_dashboard')).catch(() => null);
+      if (ch) await ch.send(`${learnerPing()} 🎓 دورة جديدة **«${b.title.trim()}»** في الأكاديمية.\nللاشتراك بتنبيهاتها: قناة **📊 لوحة الأكاديمية**`).catch(() => null);
+      syncCourseCards(client).catch(() => {});
     }
     let scheduled = 0;
     if (b.generate !== false) {
@@ -408,7 +417,7 @@ export function startWeb({ client = null, bus }) {
     if (client) {
       const ch = await client.channels.fetch(getSetting('channel_dashboard')).catch(() => null);
       if (ch) await ch.send({
-        content: templates.group_new
+        content: (await import('./coursereg.js')).learnerPing() + ' '+ templates.group_new
           .replace('{{title}}', g.title).replace('{{pages}}', String(g.total_pages)),
         components: [new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId(`grp:join:${gid}`).setLabel('📖 أنضم').setStyle(ButtonStyle.Primary),

@@ -12,7 +12,7 @@ import { ensureLevelRoles } from './gamification.js';
 import { markMemberDirty, markAllMembersDirty, refreshMemberDashboards, postOnboarding } from './memberdash.js';
 import { initHealth, reportError } from './health.js';
 import { syncLibrary } from './library.js';
-import { syncCourseCards } from './coursereg.js';
+import { syncCourseCards, ensureLearnerRole, grantLearnerRole } from './coursereg.js';
 import { warmCardRenderer } from './card.js';
 import { refreshAcademyDashboard, ensureVoiceChannel, ensureHubOrder } from './acadashboard.js';
 import { onUploadMessage, ensureUploadChannel, postUploadInstructions } from './uploads.js';
@@ -65,6 +65,7 @@ if (client) {
     // member library: every book gets a browsable card in its channel
     warmCardRenderer().catch(() => {});
   await ensureVoiceChannel(client);
+  await ensureLearnerRole(client).catch(() => null);
   await ensureHubOrder(client).catch(e => log('hub order:', e.message));
   refreshAcademyDashboard(client, { force: true }).catch(() => {});
   await syncCourseCards(client);
@@ -78,6 +79,7 @@ if (client) {
   });
 
   client.on('interactionCreate', async (i) => {
+    grantLearnerRole(i); // كل تفاعل = متعلم
     try {
       if (i.isChatInputCommand()) await handleCommand(i);
       else if (i.isMessageContextMenuCommand()) await handleContextMenu(i);
