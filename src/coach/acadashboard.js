@@ -11,7 +11,7 @@ const CHANNEL_NAME = '📊-لوحة-الأكاديمية';
 const THROTTLE_MS = 10 * 60 * 1000;
 let lastRefresh = 0;
 
-async function ensureChannel(client) {
+export async function ensureDashboardChannel(client) {
   const guild = client.guilds.cache.get(config.guildId);
   if (!guild) return null;
   const existing = guild.channels.cache.find(c => c.name === CHANNEL_NAME && c.type === ChannelType.GuildText);
@@ -75,7 +75,7 @@ export async function refreshAcademyDashboard(client, { force = false } = {}) {
   if (!force && Date.now() - lastRefresh < THROTTLE_MS) return;
   lastRefresh = Date.now();
   try {
-    const ch = await ensureChannel(client);
+    const ch = await ensureDashboardChannel(client);
     if (!ch) return;
     const buf = await renderCard(academyCardHTML(cardData()));
     if (!buf) { console.log('[acadash] render unavailable'); return; }

@@ -446,10 +446,16 @@ export async function refreshMemberDashboards(client, { force = false } = {}) {
 // pinned onboarding guide in the announcements channel (idempotent)
 export async function postOnboarding(client) {
   if (!client?.isReady?.()) return;
-  const chId = getSetting('channel_dashboard');
-  if (!chId) return;
-  const ch = await client.channels.fetch(chId).catch(() => null);
+  const { ensureDashboardChannel } = await import('./acadashboard.js');
+  const ch = await ensureDashboardChannel(client);
   if (!ch) return;
+  // intro moved to the dashboard channel — clean the old pinned one from announcements
+  try {
+    const ann = await client.channels.fetch(getSetting('channel_dashboard'));
+    const old = [...(await ann.messages.fetch({ limit: 50 })).values()].find(m =>
+      m.author?.bot && m.components?.some(r => r.components.some(b => b.customId?.startsWith('onboard:'))));
+    if (old) { await old.unpin().catch(() => {}); await old.delete().catch(() => {}); }
+  } catch {}
   const isOnboarding = m =>
     m.author?.bot && m.components?.some(r => r.components.some(b => b.customId?.startsWith('onboard:')));
   let existing = null;

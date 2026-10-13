@@ -6,6 +6,7 @@ import * as A from '../core/academy.js';
 import { getDb, getSetting } from '../core/db.js';
 import { config } from '../core/config.js';
 import { fmtInTz } from '../core/time.js';
+import { ensureDashboardChannel } from './acadashboard.js';
 
 // NOTE: discord normalizes channel names (spaces -> dashes)
 const CHANNEL_NAME = '🔔-التسجيل-بالدورات';
@@ -45,13 +46,7 @@ function cardRows(courseId) {
   )];
 }
 
-// القناة الواحدة: إعلانات الأكاديمية — بطاقة الدورة الكبيرة تُنشر فيها مرة،
-// وزر الاشتراك يظهر مع كل رسالة حصة عادية (انظر sessions.js)
-async function ensureChannel(client) {
-  const id = getSetting('channel_dashboard');
-  if (!id) return null;
-  try { return await client.channels.fetch(id); } catch { return null; }
-}
+
 
 // تنظيف القناة القديمة المنفصلة (إن وُجدت) — البطاقات كلها في إعلانات الأكاديمية الآن
 async function removeLegacyChannel(client) {
@@ -108,7 +103,7 @@ export async function handleSubscribe(interaction, courseId, wantJoin) {
 export async function syncCourseCards(client) {
   if (!client?.isReady?.()) return;
   await removeLegacyChannel(client);
-  const ch = await ensureChannel(client);
+  const ch = await ensureDashboardChannel(client);
   if (!ch) return;
   const courses = A.listCourses();
   const liveIds = new Set(courses.map(c => String(c.id)));
@@ -121,7 +116,14 @@ export async function syncCourseCards(client) {
           const msg = await ch.messages.fetch(course.reg_msg_id);
           await msg.edit(payload);
           continue;
-        } catch { /* الرسالة حُذفت — نعيد النشر */ }
+        } catch {
+          // ليست في قناة اللوحة — أزلها من الإعلانات ثم انشرها هنا
+          try {
+            const ann = await client.channels.fetch(getSetting('channel_dashboard'));
+            const old = await ann.messages.fetch(course.reg_msg_id);
+            await old.delete();
+          } catch {}
+        }
       }
       const m = await ch.send(payload);
       getDb().prepare('UPDATE courses SET reg_msg_id = ? WHERE id = ?').run(m.id, course.id);
