@@ -8,7 +8,6 @@ import { nextSlots, fmtInTz, humanDuration } from '../core/time.js';
 import { config } from '../core/config.js';
 import { templates } from '../core/templates.js';
 import { refreshDashboard, markDashboardDirty } from './dashboard.js';
-import { announceLevelUp } from './gamification.js';
 import { startStream, stopStream, prefetch } from './streamer.js';
 import { markMemberDirty, refreshMemberDashboards } from './memberdash.js';
 import { refreshAcademyDashboard } from './acadashboard.js';
@@ -31,7 +30,7 @@ function pingFor(lesson) {
 async function postQuestion(bus, q) {
   const LETTERS = ['🇦', '🇧', '🇨', '🇩', '🇪'];
   await bus.postTo('channel_dashboard', {
-    content: `❓ **${q.question}**\n_أول إجابة صحيحة تكسب ${q.xp} نقطة_`,
+    content: `❓ **${q.question}**\n_كن أول من يجيب إجابة صحيحة_`,
     components: [new ActionRowBuilder().addComponents(
       q.options.slice(0, 5).map((o, i) =>
         new ButtonBuilder().setCustomId(`quiz:${q.id}:${i}`).setLabel(o.slice(0, 80)).setStyle(ButtonStyle.Secondary)),
@@ -229,8 +228,7 @@ export async function finishSession({ client, bus, sessionId }) {
     const bonus = Math.min(a.streak * Number(getSetting('xp_streak_bonus', '10')), Number(getSetting('xp_streak_bonus_cap', '50')));
     A.awardXp(a.userId, base + bonus, 'attendance');
     markMemberDirty(a.userId); // XP changed -> their private dashboard updates
-    await announceLevelUp(client, a.userId, before);
-  }
+      }
   markDashboardDirty();
   await refreshDashboard(client, { force: true });
   return res;

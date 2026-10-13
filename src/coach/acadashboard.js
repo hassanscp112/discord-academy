@@ -66,7 +66,6 @@ function cardData() {
     lessonsDone: o.lessons_done, lessonsTotal: o.lessons_total,
     booksRead: bs.finished ?? bs.finished_books ?? 0,
     booksTotal: bs.total ?? bs.books ?? 0,
-    top: o.leaderboard.slice(0, 3),
   };
 }
 

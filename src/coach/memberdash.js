@@ -124,7 +124,7 @@ export function buildMemberEmbed(userId) {
 
   embed.addFields({
     name: '⚡ نقاطك',
-    value: `**${xp} XP** · ${lvl.emoji} **${lvl.name}** · 🔥 سلسلة **${streak}**${rank ? ` · المركز **${rank}**` : ''}`,
+    value: `🔥 سلسلة **${streak}** · واصل التقدم!`,
     inline: false,
   });
 

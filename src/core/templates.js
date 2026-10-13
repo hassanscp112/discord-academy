@@ -25,10 +25,10 @@ export const templates = {
 
   session_done:
     '✅ **انتهت الحصة** — بارك الله في كل من حضر **{{lesson_title}}**!{{part_line}}\n' +
-    'للحاضرين **{{xp}} نقطة**. لا تنسوا تعليم الدرس كمكتمل:',
+    'لا تنسوا تعليم الدرس كمكتمل:',
 
   completion_thanks:
-    '{{mention}} أكمل **{{lesson_title}}**! 🎉 (+{{xp}} نقطة)',
+    '{{mention}} أكمل **{{lesson_title}}**! 🎉',
 
   nudge_dm: [
     'سلام {{member}}! 👋 هل ذاكرت **{{lesson_title}}** حتى الآن؟ ما زال مفتوحًا — وعندك سلسلة {{streak}} أيام تحميها 🔥',
@@ -37,9 +37,6 @@ export const templates = {
   ],
   nudge_channel:
     '{{ping}} **تذكير بالمواصلة!** الدرس الحالي: **{{lesson_title}}** — علّمه بـ ✅ في منشور الدرس عندما تنتهي. أصحاب أطول سلسلة على اللوحة 👀',
-
-  level_up:
-    '🎉 {{mention}} انتقل إلى **{{emoji}} {{level_name}}** ({{xp}} نقطة)!',
 
   quest_new:
     '{{kind}} في قائمة الإنجاز: **{{title}}**\nاضغط «أنجزتها ✅» عند الإتمام.',

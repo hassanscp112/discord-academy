@@ -137,14 +137,11 @@ export function memberCardHTML(d) {
   <div class="top">
     <div class="who"><img class="hlogo" src="${EMBLEM}" alt=""><div class="name">${esc(d.name)}</div></div>
     <div class="pills">
-      <span class="pill">${esc(d.level.emoji)} ${esc(d.level.name)}</span>
-      ${d.rank ? `<span class="pill ghost">🏅 المركز ${d.rank}</span>` : ''}
       <span class="pill ghost">🔥 ${d.streak}</span>
     </div>
   </div>
   <div class="body">
   <div class="stats">
-    <div class="stat"><div class="v">${d.xp}</div><div class="l">نقطة</div></div>
     <div class="stat"><div class="v">${d.lessonsDone}/${d.lessonsTotal}</div><div class="l">درس مكتمل</div></div>
     <div class="stat"><div class="v">${d.quests.done}/${d.quests.total}</div><div class="l">من قائمة الإنجاز</div></div>
   </div>
@@ -195,7 +192,7 @@ export function onboardingCardHTML() {
   ${step(5, '❓ أسئلة بعد الحصة',
     'بعد كل حصة قد يظهر سؤال في قناة الإعلانات — الإجابة الصحيحة تكسبك نقاطاً إضافية.')}
   <div class="next"><b>أوامر سريعة</b>
-    <span class="w">/myprogress · /books · /group · /leaderboard</span></div>
+    <span class="w">/myprogress · /books · /group</span></div>
   <div class="foot">ابدأ الآن: ادخل أول حصة وستجد لوحتك جاهزة</div>
   </div>
   `);
@@ -220,10 +217,8 @@ export function listCardHTML({ icon, title, subtitle, rows }) {
 
 // ---------- 📊 academy dashboard card (public board channel) ----------
 export function academyCardHTML(d) {
-  const medal = ['🥇', '🥈', '🥉'];
   const courses = d.courses.slice(0, 5).map(c => barRow(esc(c.title), c.next ? 'التالي: ' + c.next : 'مكتملة 🎉',
     c.done, c.total, `${c.done}/${c.total}`)).join('');
-  const top = d.top.map((r, i) => `${medal[i] ?? '▫️'} **${esc(r.name ?? r.display_name ?? 'عضو')}** — ${r.xp} نقطة`).join('\n');
   return page(`
   <div class="top">
     <div class="who"><img class="hlogo" src="${EMBLEM}" alt=""><div class="name">هُدَى · لوحة الأكاديمية</div></div>
@@ -236,7 +231,6 @@ export function academyCardHTML(d) {
     <div class="stat"><div class="v">${d.booksRead}/${d.booksTotal}</div><div class="l">كتابًا قُرئ</div></div>
   </div>
   ${courses ? `<div class="sec"><h3>🎓 الدورات</h3>${courses}</div>` : ''}
-  ${top ? `<div class="sec"><h3>🏆 المتصدرون</h3><div style="font-size:15px;line-height:2">${top}</div></div>` : ''}
   <div class="foot">تتحدث تلقائيًا بعد كل حدث في الأكاديمية · التسجيل من قناة الإعلانات</div>
   </div>
   `);

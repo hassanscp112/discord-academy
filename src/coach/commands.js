@@ -14,7 +14,6 @@ import { templates } from '../core/templates.js';
 import { finishSession, proposeSlot } from './sessions.js';
 import { markMemberDirty, memberDashPayload } from './memberdash.js';
 import { stopStream } from './streamer.js';
-import { announceLevelUp } from './gamification.js';
 import { refreshDashboard, markDashboardDirty } from './dashboard.js';
 
 export const commandDefs = [
@@ -46,8 +45,6 @@ export const commandDefs = [
     .addChannelOption(o => o.setName('study_vc').setDescription('The voice channel where classes happen').addChannelTypes(ChannelType.GuildVoice))
     .addRoleOption(o => o.setName('ping_role').setDescription('Role to ping for session reminders')),
   new SlashCommandBuilder().setName('myprogress').setDescription('Show your progress'),
-  new SlashCommandBuilder().setName('leaderboard').setDescription('XP leaderboard')
-    .addBooleanOption(o => o.setName('full').setDescription('Include inactive members (admin view)')),
   new SlashCommandBuilder().setName('quest').setDescription('Show the academy checklist')
     .addSubcommand(sc => sc.setName('list').setDescription('List checklist items')),
   new SlashCommandBuilder().setName('books').setDescription('📚 كتبي — تقدم القراءة'),
@@ -177,8 +174,6 @@ export async function handleCommand(interaction) {
     const u = interaction.user;
     A.upsertParticipant(u.id, u.username);
     markMemberDirty(u.id); // ensures their private channel exists and is fresh
-    const xp = A.xpTotal(u.id);
-    const lvl = A.levelFor(xp);
     const done = A.listProgress(u.id);
     const total = A.listLessons().length;
     const streak = A.currentStreak(u.id);
@@ -190,24 +185,11 @@ export async function handleCommand(interaction) {
     });
     return interaction.reply({
       embeds: [e(`📈 ${u.username}`, [
-        `**${xp} XP** · ${lvl.emoji} **${lvl.name}** · 🔥 streak: **${streak}**`,
+        `🔥 سلسلة: **${streak}** · تقدمك:`,
         courses.length ? `\n${courses.join('\n')}` : `Lessons: **${done.length}/${total}**`,
         quests.length ? `\n**Checklist:**\n${quests.join('\n')}` : '',
       ].join('\n'))], ephemeral: true,
     });
-  }
-
-  if (cmd === 'leaderboard') {
-    const full = opts.getBoolean('full') && isAdmin(interaction);
-    const rows = A.xpLeaderboard(15);
-    if (!rows.length) return interaction.reply({ embeds: [e('🏆 Leaderboard', '_No XP yet — come to a session!_')] });
-    const lines = rows.map((r, i) => {
-      const p = A.getParticipant(r.user_id);
-      const lvl = A.levelFor(r.xp);
-      return `${['🥇','🥈','🥉'][i] ?? '▫️'} **${p?.display_name || r.user_id}** — ${r.xp} XP · ${lvl.emoji} ${lvl.name} · 🔥 ${A.currentStreak(r.user_id)}`;
-    });
-    const extra = full ? '\n\n_Inactive this week:_' + (A.weeklyRecap().falling.map(f => `\n💤 ${f.display_name || f.user_id}`).join('') || ' none!') : '';
-    return interaction.reply({ embeds: [e('🏆 Leaderboard', lines.join('\n') + extra)] });
   }
 
   if (cmd === 'quest') {
@@ -308,13 +290,9 @@ export async function handleButton(interaction) {
   if (kind === 'complete') {
     const lessonId = parseInt(idStr, 10);
     A.upsertParticipant(interaction.user.id, interaction.user.username);
-    const before = A.xpTotal(interaction.user.id);
     const res = A.completeLesson(interaction.user.id, lessonId);
     if (!res.already) markMemberDirty(interaction.user.id);
     if (res.already) return interaction.reply({ content: 'You already marked this lesson ✅', ephemeral: true });
-    await announceLevelUp(interaction.client, interaction.user.id, before);
-    const xp = A.xpTotal(interaction.user.id);
-    const lvl = A.levelFor(xp);
     markDashboardDirty();
     await refreshDashboard(interaction.client, { force: true });
     return interaction.reply({
@@ -414,7 +392,6 @@ export async function handleButton(interaction) {
     if (!cp.next) return interaction.reply({ content: 'أكملت كل دروس هذه الدورة 🎉', ephemeral: true });
     const res = A.completeLesson(interaction.user.id, cp.next.lesson_id);
     markMemberDirty(interaction.user.id);
-    if (!res.already) await announceLevelUp(interaction.client, interaction.user.id, res.total - (res.granted ?? 0));
     await interaction.deferUpdate();
     await interaction.editReply(await memberDashPayload(interaction.user.id, 'courses'));
     return interaction.followUp({
@@ -461,11 +438,9 @@ export async function handleButton(interaction) {
     if (!r) return interaction.reply({ content: 'هذا السؤال لم يعد متاحاً.', ephemeral: true });
     if (r.already) return interaction.reply({ content: 'أجبت على هذا السؤال من قبل 🙂', ephemeral: true });
     if (r.correct) {
-      const before = A.xpTotal(interaction.user.id);
-      A.awardXp(interaction.user.id, r.question.xp, 'quiz');
+        A.awardXp(interaction.user.id, r.question.xp, 'quiz');
       markMemberDirty(interaction.user.id);
-      await announceLevelUp(interaction.client, interaction.user.id, before);
-      return interaction.reply({ content: `✅ إجابة صحيحة! +${r.question.xp} نقطة`, ephemeral: true });
+        return interaction.reply({ content: `✅ إجابة صحيحة! +${r.question.xp} نقطة`, ephemeral: true });
     }
     return interaction.reply({ content: '❌ ليست الإجابة الصحيحة — راجع الدرس وحاول التركيز في الحصة القادمة!', ephemeral: true });
   }
