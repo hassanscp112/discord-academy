@@ -14,7 +14,7 @@ import { initHealth, reportError } from './health.js';
 import { syncLibrary } from './library.js';
 import { syncCourseCards, ensureLearnerRole, grantLearnerRole } from './coursereg.js';
 import { warmCardRenderer } from './card.js';
-import { refreshAcademyDashboard, ensureVoiceChannel, ensureHubOrder } from './acadashboard.js';
+import { refreshAcademyDashboard, ensureVoiceChannel, ensureHubOrder, removeLegacyDashboard } from './acadashboard.js';
 import { onUploadMessage, ensureUploadChannel, postUploadInstructions } from './uploads.js';
 import * as A from '../core/academy.js';
 
@@ -66,6 +66,7 @@ if (client) {
     warmCardRenderer().catch(() => {});
   await ensureVoiceChannel(client);
   await ensureLearnerRole(client).catch(() => null);
+  removeLegacyDashboard(client).catch(() => {});
   await ensureHubOrder(client).catch(e => log('hub order:', e.message));
   refreshAcademyDashboard(client, { force: true }).catch(() => {});
   await syncCourseCards(client);

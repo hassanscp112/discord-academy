@@ -121,3 +121,20 @@ export async function ensureHubOrder(client) {
   await refreshAcademyDashboard(client, { force: true });
   console.log('[acadash] hub order set: intro → courses → stats');
 }
+
+// إزالة رسالة اللوحة النصية القديمة (ACADEMY_DASH_V1) من الإعلانات — مرة واحدة
+export async function removeLegacyDashboard(client) {
+  if (getSetting('legacy_dash_removed')) return;
+  setSetting('legacy_dash_removed', '1');
+  try {
+    const ann = await client.channels.fetch(getSetting('channel_dashboard'));
+    const msgs = [...(await ann.messages.fetch({ limit: 50 })).values()];
+    for (const m of msgs) {
+      const legacy = m.author?.bot && (
+        (m.embeds ?? []).some(e => (e.footer?.text ?? '').includes('ACADEMY_DASH_V1')) ||
+        (m.content ?? '').includes('ACADEMY_DASH_V1'));
+      if (legacy) await m.delete().catch(() => {});
+    }
+    console.log('[acadash] legacy text dashboard removed');
+  } catch (e) { console.log('[acadash] legacy cleanup:', e.message); }
+}

@@ -149,7 +149,7 @@ export async function ensureLearnerRole(client) {
   let role = guild.roles.cache.find(r => r.name === 'متعلم');
   if (!role) {
     try {
-      role = await guild.roles.create({ name: 'متعلم', color: 0x1E3A6E, mentionable: true, reason: 'إعلانات الأكاديمية العامة' });
+      role = await guild.roles.create({ name: 'متعلم', colors: [0x1E3A6E], mentionable: true, reason: 'إعلانات الأكاديمية العامة' });
       console.log('[coursereg] learner role created');
     } catch (e) { console.log('[coursereg] learner role create failed:', e.message); return null; }
   }
