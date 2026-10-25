@@ -60,7 +60,7 @@ async function runRecap({ client, bus, now = new Date() } = {}) {
   const r = A.weeklyRecap({});
   const closers = templates.recap_closing;
   const closing = closers[Math.abs(dateInTz(now).split('-').join('') % closers.length) % closers.length];
-  const topName = r.top ? (A.getParticipant(r.top.user_id)?.display_name || r.top.user_id) + ` (+${r.top.xp} XP)` : '_nobody yet_';
+  const topName = r.top ? (A.getParticipant(r.top.user_id)?.display_name || r.top.user_id) : '_لا أحد بعد_';
 
   await bus.postTo('channel_dashboard', { content: fill(templates.recap, {
     sessions: r.sessions, active: r.active, top: topName,
@@ -69,8 +69,8 @@ async function runRecap({ client, bus, now = new Date() } = {}) {
 
   // falling-behind report: bosses only
   if (r.falling.length) {
-    const lines = r.falling.map(f => `💤 **${f.display_name || f.user_id}** — ${f.totalXp} XP total, nothing this week`);
-    await bus.bossDm({ content: `📉 **Falling behind this week** (${r.falling.length}):\n${lines.join('\n')}` });
+    const lines = r.falling.map(f => `💤 **${f.display_name || f.user_id}** — لا نشاط هذا الأسبوع`);
+    await bus.bossDm({ content: `📉 **متأخرون هذا الأسبوع** (${r.falling.length}):\n${lines.join('\n')}` });
   }
   markDashboardDirty();
 }

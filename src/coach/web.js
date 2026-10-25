@@ -1,9 +1,9 @@
 // Coach web server: Arabic SPA (public/) + cookie-auth dashboard API
 // + token-auth API for the AI Admin studio. Old HTML pages are gone.
 import express from 'express';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import * as A from '../core/academy.js';
@@ -19,7 +19,63 @@ import { startSessionNow, finishSession } from './sessions.js';
 import { templates } from '../core/templates.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const dashCookie = () => createHash('sha256').update(`academy:${config.dashPassword}`).digest('hex').slice(0, 32);
+const sha256 = v => createHash('sha256').update(String(v)).digest();
+// constant-time compare; an unset secret never matches (dry-run has no password/token)
+const sameSecret = (given, secret) => !!secret && timingSafeEqual(sha256(given ?? ''), sha256(secret));
+
+// ---- dashboard sessions: random per-login tokens, stored hashed in data/ so they
+// survive restarts; logout revokes one, changing DASH_PASSWORD revokes all ----
+const SESSION_MS = 30 * 86400000;
+const SESSIONS_FILE = 'data/dash-sessions.json';
+const pwTag = () => sha256(`academy:${config.dashPassword}`).toString('hex').slice(0, 16);
+let sessions = null; // { pw, tokens: { sha256(token) -> expiresAt } }
+function loadSessions() {
+  if (sessions?.pw === pwTag()) return sessions;
+  try {
+    const s = JSON.parse(readFileSync(SESSIONS_FILE, 'utf8'));
+    sessions = s.pw === pwTag() && s.tokens ? s : { pw: pwTag(), tokens: {} };
+  } catch { sessions = { pw: pwTag(), tokens: {} }; }
+  return sessions;
+}
+function saveSessions() {
+  const now = Date.now();
+  const live = Object.entries(sessions.tokens).filter(([, exp]) => exp > now).sort((a, b) => b[1] - a[1]).slice(0, 50);
+  sessions.tokens = Object.fromEntries(live);
+  try { mkdirSync('data', { recursive: true }); writeFileSync(SESSIONS_FILE, JSON.stringify(sessions)); }
+  catch (e) { console.log('[web] could not persist sessions:', e.message); }
+}
+function createSession() {
+  const token = randomBytes(32).toString('base64url');
+  loadSessions().tokens[sha256(token).toString('hex')] = Date.now() + SESSION_MS;
+  saveSessions();
+  return token;
+}
+function validSession(token) {
+  if (!token || token.length > 100) return false;
+  return (loadSessions().tokens[sha256(token).toString('hex')] ?? 0) > Date.now();
+}
+function revokeSession(token) {
+  if (!token) return;
+  const s = loadSessions();
+  const key = sha256(token).toString('hex');
+  if (key in s.tokens) { delete s.tokens[key]; saveSessions(); }
+}
+
+// ---- login brute-force brake: 5 failures / 15 min per client IP, plus 30 / 15 min
+// across everyone (still holds if X-Forwarded-For is spoofed) ----
+const FAIL_WINDOW_MS = 15 * 60000;
+const failsByIp = new Map();
+let allFails = [];
+const recent = list => list.filter(t => Date.now() - t < FAIL_WINDOW_MS);
+function loginBlocked(ip) {
+  allFails = recent(allFails);
+  return recent(failsByIp.get(ip) ?? []).length >= 5 || allFails.length >= 30;
+}
+function noteLoginFailure(ip) {
+  failsByIp.set(ip, [...recent(failsByIp.get(ip) ?? []), Date.now()]);
+  allFails.push(Date.now());
+  if (failsByIp.size > 1000) failsByIp.clear(); // bounded memory under a spray
+}
 const DAY_AR = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 const DAYS_MAP = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6, 'الأحد': 0, 'الاحد': 0, 'الإثنين': 1, 'الاثنين': 1, 'الثلاثاء': 2, 'الأربعاء': 3, 'الاربعاء': 3, 'الخميس': 4, 'الجمعة': 5, 'السبت': 6 };
 const parseDaysStr = str => String(str ?? '').toLowerCase().split(',').map(d => DAYS_MAP[d.trim()]).filter(d => d !== undefined);
@@ -56,18 +112,32 @@ function memberTimeline(userId) {
 
 export function startWeb({ client = null, bus }) {
   const app = express();
+  app.disable('x-powered-by');
+  if (config.trustProxy) app.set('trust proxy', 1); // real client IP behind the host's HTTPS proxy
+  if (config.dashPassword && config.dashPassword.length < 12) {
+    console.log('[web] WARNING: DASH_PASSWORD is shorter than 12 characters — use a long one when the dashboard is public');
+  }
+  app.use((_req, res, next) => {
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'same-origin');
+    next();
+  });
   app.use(express.urlencoded({ extended: true }));
   app.use(express.json({ limit: '1mb' }));
   app.use((req, _res, next) => {
-    req.cookies = Object.fromEntries((req.headers.cookie ?? '').split(';').map(c => c.trim().split('=').map(decodeURIComponent)).filter(a => a[0]));
+    req.cookies = Object.fromEntries((req.headers.cookie ?? '').split(';').map(c => {
+      const i = c.indexOf('=');
+      try { return [c.slice(0, i).trim(), decodeURIComponent(c.slice(i + 1).trim())]; } catch { return []; }
+    }).filter(a => a[0]));
     next();
   });
-  const hasDash = req => req.cookies?.dash === dashCookie();
+  const hasDash = req => validSession(req.cookies?.dash);
   const dashAuth = (req, res, next) => (hasDash(req) ? next() : res.status(401).json({ error: 'غير مصرح' }));
 
   // ---------- token API (AI studio) ----------
   const apiAuth = (req, res, next) => {
-    if ((req.headers['x-api-token'] ?? '') !== config.apiToken) return res.status(401).json({ error: 'bad token' });
+    if (!sameSecret(req.headers['x-api-token'], config.apiToken)) return res.status(401).json({ error: 'bad token' });
     next();
   };
   app.get('/api/state', apiAuth, (_req, res) => {
@@ -489,7 +559,7 @@ export function startWeb({ client = null, bus }) {
   });
 
   // ---------- auth + static ----------
-  const loginPage = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>هُدَى · لوحة الأكاديمية</title>
+  const loginPage = (msg = '') => `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>هُدَى · لوحة الأكاديمية</title>
 <link rel="icon" href="/logo-mark.png">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -501,23 +571,38 @@ export function startWeb({ client = null, bus }) {
 input{width:100%;box-sizing:border-box;background:#fff;color:#22314E;border:1px solid #CBD4E2;border-radius:10px;padding:12px;font-size:16px;text-align:center;outline:none;transition:border-color .15s,box-shadow .15s}
 input:focus{border-color:#C9992E;box-shadow:0 0 0 3px rgba(201,153,46,.14)}
 button{width:100%;margin-top:14px;background:#C9992E;color:#16294F;border:none;border-radius:10px;padding:13px;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;transition:background .15s}
-button:hover{background:#DBAF41}</style></head>
+button:hover{background:#DBAF41}
+.err{color:#B3261E;font-size:14px;margin-top:12px}</style></head>
 <body><form class="c" method="post" action="/login">
 <img class="em" src="/logo.png" alt="هُدَى">
 <div class="tag">منصّة دعوية</div><div class="s">تسجيل الدخول إلى لوحة الأكاديمية</div>
-<input type="password" name="password" placeholder="كلمة المرور" autofocus><button>دخول</button></form></body></html>`;
-  app.get('/login', (_req, res) => res.send(loginPage));
+<input type="password" name="password" placeholder="كلمة المرور" autofocus><button>دخول</button>${msg ? `<div class="err">${msg}</div>` : ''}</form></body></html>`;
+  // Secure only over HTTPS (bot-hosting.net subdomain) — the LAN/tablet dashboard is plain http
+  const isHttps = req => req.secure || req.headers['x-forwarded-proto'] === 'https';
+  const cookie = (req, value, maxAgeSec) =>
+    `dash=${value}; HttpOnly; Path=/; Max-Age=${maxAgeSec}; SameSite=Lax${isHttps(req) ? '; Secure' : ''}`;
+  app.get('/login', (_req, res) => res.send(loginPage()));
   app.post('/login', (req, res) => {
-    if (req.body.password === config.dashPassword) {
-      res.setHeader('Set-Cookie', `dash=${dashCookie()}; HttpOnly; Path=/; Max-Age=2592000; SameSite=Lax`);
+    const ip = req.ip ?? 'unknown';
+    if (loginBlocked(ip)) return res.status(429).send(loginPage('محاولات كثيرة — انتظر ربع ساعة ثم حاول مجدداً.'));
+    if (sameSecret(req.body?.password, config.dashPassword)) {
+      failsByIp.delete(ip);
+      res.setHeader('Set-Cookie', cookie(req, createSession(), SESSION_MS / 1000));
       return res.redirect('/');
     }
-    res.status(401).send(loginPage);
+    noteLoginFailure(ip);
+    console.log(`[web] failed dashboard login from ${ip}`);
+    res.status(401).send(loginPage('كلمة المرور غير صحيحة.'));
   });
-  app.get('/logout', (_req, res) => { res.setHeader('Set-Cookie', 'dash=; Max-Age=0'); res.redirect('/login'); });
+  app.get('/logout', (req, res) => {
+    revokeSession(req.cookies?.dash);
+    res.setHeader('Set-Cookie', cookie(req, '', 0));
+    res.redirect('/login');
+  });
 
   // ---------- static: any frontend dropped into public/ (user-built dashboard) ----------
-  app.use(express.static(join(here, '../../public')));
+  // index: false so "/" always goes through the session check below
+  app.use(express.static(join(here, '../../public'), { index: false }));
   app.get('/', (req, res, next) => {
     const index = join(here, '../../public/index.html');
     if (hasDash(req) && existsSync(index)) return res.sendFile(index);

@@ -66,7 +66,7 @@ async function ensureRole(client, course) {
   let role = guild.roles.cache.find(r => r.name === name);
   if (!role) {
     try {
-      role = await guild.roles.create({ name, colors: [roleColor], mentionable: false, reason: `تنبيهات دورة ${course.title}` });
+      role = await guild.roles.create({ name, colors: { primaryColor: roleColor }, mentionable: false, reason: `تنبيهات دورة ${course.title}` });
       console.log('[coursereg] role created:', name);
     } catch (e) {
       console.log('[coursereg] cannot create role (need Manage Roles):', e.message);
@@ -149,7 +149,7 @@ export async function ensureLearnerRole(client) {
   let role = guild.roles.cache.find(r => r.name === 'متعلم');
   if (!role) {
     try {
-      role = await guild.roles.create({ name: 'متعلم', colors: [0x1E3A6E], mentionable: true, reason: 'إعلانات الأكاديمية العامة' });
+      role = await guild.roles.create({ name: 'متعلم', colors: { primaryColor: 0x1E3A6E }, mentionable: true, reason: 'إعلانات الأكاديمية العامة' });
       console.log('[coursereg] learner role created');
     } catch (e) { console.log('[coursereg] learner role create failed:', e.message); return null; }
   }

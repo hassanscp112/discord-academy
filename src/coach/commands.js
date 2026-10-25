@@ -17,36 +17,36 @@ import { stopStream } from './streamer.js';
 import { refreshDashboard, markDashboardDirty } from './dashboard.js';
 
 export const commandDefs = [
-  new SlashCommandBuilder().setName('lesson').setDescription('Manage course lessons (admin)')
+  new SlashCommandBuilder().setName('lesson').setDescription('إدارة دروس الدورة (للإدارة)')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addSubcommand(sc => sc.setName('add').setDescription('Add a lesson')
-      .addStringOption(o => o.setName('title').setDescription('Lesson title').setRequired(true))
-      .addStringOption(o => o.setName('url').setDescription('YouTube URL'))
-      .addIntegerOption(o => o.setName('duration').setDescription('Duration in minutes (default 60)')))
-    .addSubcommand(sc => sc.setName('list').setDescription('List lessons'))
-    .addSubcommand(sc => sc.setName('remove').setDescription('Remove a lesson')
-      .addIntegerOption(o => o.setName('id').setDescription('Lesson id (see /lesson list)').setRequired(true))),
-  new SlashCommandBuilder().setName('schedule').setDescription('Manage the class schedule (admin)')
+    .addSubcommand(sc => sc.setName('add').setDescription('إضافة درس')
+      .addStringOption(o => o.setName('title').setDescription('عنوان الدرس').setRequired(true))
+      .addStringOption(o => o.setName('url').setDescription('رابط يوتيوب'))
+      .addIntegerOption(o => o.setName('duration').setDescription('المدة بالدقائق (الافتراضي 60)')))
+    .addSubcommand(sc => sc.setName('list').setDescription('عرض الدروس'))
+    .addSubcommand(sc => sc.setName('remove').setDescription('حذف درس')
+      .addIntegerOption(o => o.setName('id').setDescription('رقم الدرس (انظر /lesson list)').setRequired(true))),
+  new SlashCommandBuilder().setName('schedule').setDescription('إدارة جدول الحصص (للإدارة)')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addSubcommand(sc => sc.setName('template').setDescription('Weekly repeating slot, e.g. Sun+Wed 20:00')
-      .addStringOption(o => o.setName('days').setDescription('Comma-separated: sun,wed').setRequired(true))
-      .addStringOption(o => o.setName('time').setDescription('HH:mm, e.g. 20:00').setRequired(true)))
-    .addSubcommand(sc => sc.setName('generate').setDescription('Fill the next template slots with upcoming lessons'))
-    .addSubcommand(sc => sc.setName('list').setDescription('Show scheduled sessions'))
-    .addSubcommand(sc => sc.setName('move').setDescription('Move a session to a new date/time')
-      .addIntegerOption(o => o.setName('id').setDescription('Session id (see /schedule list)').setRequired(true))
-      .addStringOption(o => o.setName('date').setDescription('YYYY-MM-DD').setRequired(true))
-      .addStringOption(o => o.setName('time').setDescription('HH:mm').setRequired(true)))
-    .addSubcommand(sc => sc.setName('cancel').setDescription('Cancel a session')
-      .addIntegerOption(o => o.setName('id').setDescription('Session id').setRequired(true))),
-  new SlashCommandBuilder().setName('setup').setDescription('Configure channels for the academy (admin)')
+    .addSubcommand(sc => sc.setName('template').setDescription('موعد أسبوعي متكرر، مثل الأحد والأربعاء 20:00')
+      .addStringOption(o => o.setName('days').setDescription('أيام مفصولة بفاصلة: sun,wed').setRequired(true))
+      .addStringOption(o => o.setName('time').setDescription('الوقت HH:mm، مثل 20:00').setRequired(true)))
+    .addSubcommand(sc => sc.setName('generate').setDescription('ملء المواعيد القادمة بالدروس التالية'))
+    .addSubcommand(sc => sc.setName('list').setDescription('عرض الحصص المجدولة'))
+    .addSubcommand(sc => sc.setName('move').setDescription('نقل حصة إلى تاريخ/وقت جديد')
+      .addIntegerOption(o => o.setName('id').setDescription('رقم الحصة (انظر /schedule list)').setRequired(true))
+      .addStringOption(o => o.setName('date').setDescription('التاريخ YYYY-MM-DD').setRequired(true))
+      .addStringOption(o => o.setName('time').setDescription('الوقت HH:mm').setRequired(true)))
+    .addSubcommand(sc => sc.setName('cancel').setDescription('إلغاء حصة')
+      .addIntegerOption(o => o.setName('id').setDescription('رقم الحصة').setRequired(true))),
+  new SlashCommandBuilder().setName('setup').setDescription('إعداد قنوات الأكاديمية (للإدارة)')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addChannelOption(o => o.setName('dashboard').setDescription('Channel for the dashboard embed + announcements').addChannelTypes(ChannelType.GuildText))
-    .addChannelOption(o => o.setName('study_vc').setDescription('The voice channel where classes happen').addChannelTypes(ChannelType.GuildVoice))
-    .addRoleOption(o => o.setName('ping_role').setDescription('Role to ping for session reminders')),
-  new SlashCommandBuilder().setName('myprogress').setDescription('Show your progress'),
-  new SlashCommandBuilder().setName('quest').setDescription('Show the academy checklist')
-    .addSubcommand(sc => sc.setName('list').setDescription('List checklist items')),
+    .addChannelOption(o => o.setName('dashboard').setDescription('قناة اللوحة والإعلانات').addChannelTypes(ChannelType.GuildText))
+    .addChannelOption(o => o.setName('study_vc').setDescription('القناة الصوتية للحصص').addChannelTypes(ChannelType.GuildVoice))
+    .addRoleOption(o => o.setName('ping_role').setDescription('الرتبة التي تُنبَّه بتذكير الحصص')),
+  new SlashCommandBuilder().setName('myprogress').setDescription('عرض تقدمك'),
+  new SlashCommandBuilder().setName('quest').setDescription('قائمة إنجازات الأكاديمية')
+    .addSubcommand(sc => sc.setName('list').setDescription('عرض عناصر القائمة')),
   new SlashCommandBuilder().setName('books').setDescription('📚 كتبي — تقدم القراءة'),
   new SlashCommandBuilder().setName('group').setDescription('📚 مجموعات القراءة')
     .addSubcommand(sc => sc.setName('list').setDescription('المجموعات النشطة'))
@@ -66,12 +66,18 @@ export const commandDefs = [
       .addIntegerOption(o => o.setName('pages').setDescription('عدد الصفحات (إن كان كتاباً جديداً)')))
     .addSubcommand(sc => sc.setName('remove').setDescription('فك ربط PDF عن كتاب وحذف منشوره')
       .addStringOption(o => o.setName('book').setDescription('عنوان الكتاب').setRequired(true))),
-  new SlashCommandBuilder().setName('optout').setDescription('Toggle check-in DMs on/off for you'),
+  new SlashCommandBuilder().setName('optout').setDescription('تشغيل/إيقاف رسائل المتابعة الخاصة'),
   new ContextMenuCommandBuilder().setName('📚 نشر في المكتبة').setType(ApplicationCommandType.Message),
 ];
 
 const e = (title, desc, color = 0x5865f2) => new EmbedBuilder().setTitle(title).setDescription(desc.slice(0, 4000)).setColor(color);
 const QCAT = { book: '📖', lecture: '📺', course: '🎓' };
+const DAY_AR = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+const STATUS_AR = {
+  planned: 'مخطط', done: 'مكتمل', skipped: 'متخطى', scheduled: 'مجدول', reminded: 'تم التذكير',
+  live: 'مباشر', missed_poll: 'بانتظار موعد جديد', cancelled: 'ملغى',
+};
+const statusAr = s => STATUS_AR[s] ?? s;
 
 export function isAdmin(interaction) {
   return interaction.member?.permissions?.has(PermissionFlagsBits.ManageGuild) || config.bossIds.includes(interaction.user.id);
@@ -91,19 +97,19 @@ export async function handleCommand(interaction) {
         durationMin: opts.getInteger('duration') ?? 60,
       });
       markDashboardDirty();
-      return interaction.reply({ embeds: [e('✅ Lesson added', `#${id} — **${opts.getString('title')}**\nPosition: ${A.getLesson(id).position}`)] });
+      return interaction.reply({ embeds: [e('✅ أُضيف الدرس', `#${id} — **${opts.getString('title')}**\nالترتيب: ${A.getLesson(id).position}`)] });
     }
     if (sub === 'list') {
       const rows = A.listLessons().map(l => {
         const s = A.sessionForLesson(l.id);
-        return `#${l.id} · **${l.title}** · ${l.status}${s ? ` · 🗓️ ${fmtInTz(new Date(s.scheduled_at), tz)}` : ''}`;
+        return `#${l.id} · **${l.title}** · ${statusAr(l.status)}${s ? ` · 🗓️ ${fmtInTz(new Date(s.scheduled_at), tz)}` : ''}`;
       });
-      return interaction.reply({ embeds: [e('📚 Lessons', rows.length ? rows.join('\n') : '_None yet — add one with /lesson add_')] });
+      return interaction.reply({ embeds: [e('📚 الدروس', rows.length ? rows.join('\n') : '_لا دروس بعد — أضف درساً بـ /lesson add_')] });
     }
     if (sub === 'remove') {
       const ok = A.removeLesson(opts.getInteger('id', true));
       markDashboardDirty();
-      return interaction.reply({ embeds: [e(ok ? '🗑️ Removed' : '❌ Not found', ok ? 'Lesson and its sessions were removed.' : 'No lesson with that id.', ok ? 0x57f287 : 0xed4245)] });
+      return interaction.reply({ embeds: [e(ok ? '🗑️ حُذف' : '❌ غير موجود', ok ? 'حُذف الدرس وحصصه.' : 'لا يوجد درس بهذا الرقم.', ok ? 0x57f287 : 0xed4245)] });
     }
   }
 
@@ -112,48 +118,48 @@ export async function handleCommand(interaction) {
     if (sub === 'template') {
       const map = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
       const days = opts.getString('days', true).toLowerCase().split(',').map(d => map[d.trim()]).filter(d => d !== undefined);
-      if (!days.length) return interaction.reply({ embeds: [e('❌ Bad days', 'Use day names like `sun,wed`')] });
+      if (!days.length) return interaction.reply({ embeds: [e('❌ أيام غير صحيحة', 'اكتب الأيام هكذا: `sun,wed`')] });
       const time = opts.getString('time', true);
-      if (!/^\d{2}:\d{2}$/.test(time)) return interaction.reply({ embeds: [e('❌ Bad time', 'Use `HH:mm`, e.g. `20:00`')] });
+      if (!/^\d{2}:\d{2}$/.test(time)) return interaction.reply({ embeds: [e('❌ وقت غير صحيح', 'اكتب الوقت بصيغة `HH:mm`، مثل `20:00`')] });
       A.setTemplate({ days, time });
       markDashboardDirty();
-      return interaction.reply({ embeds: [e('✅ Weekly template set', `Every week on **${days.map(d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]).join(' & ')}** at **${time}** (${tz}).\nNow run \`/schedule generate\`.`)] });
+      return interaction.reply({ embeds: [e('✅ ضُبط الموعد الأسبوعي', `كل أسبوع يوم **${days.map(d => DAY_AR[d]).join(' و')}** الساعة **${time}** (${tz}).\nالآن نفّذ \`/schedule generate\`.`)] });
     }
     if (sub === 'generate') {
       try {
         const created = A.generateSchedule({});
-        if (!created.length) return interaction.reply({ embeds: [e('📅 Nothing to schedule', 'All planned lessons already have a session.')] });
+        if (!created.length) return interaction.reply({ embeds: [e('📅 لا شيء للجدولة', 'كل الدروس المخططة لها حصص بالفعل.')] });
         markDashboardDirty();
         await refreshDashboard(interaction.client, { force: true });
         const lines = created.map(s => `**${A.getLesson(s.lesson_id).title}** → ${fmtInTz(new Date(s.scheduled_at), tz)}`);
-        return interaction.reply({ embeds: [e('📅 Sessions scheduled', lines.join('\n'))] });
+        return interaction.reply({ embeds: [e('📅 جُدولت الحصص', lines.join('\n'))] });
       } catch (err) {
-        return interaction.reply({ embeds: [e('❌ Could not schedule', err.message, 0xed4245)], ephemeral: true });
+        return interaction.reply({ embeds: [e('❌ تعذّرت الجدولة', err.message, 0xed4245)], ephemeral: true });
       }
     }
     if (sub === 'list') {
       const rows = A.listSessions({ future: true, limit: 20 }).map(s => {
         const l = A.getLesson(s.lesson_id);
-        return `#${s.id} · **${l?.title ?? '?'}** · ${fmtInTz(new Date(s.scheduled_at), tz)} · ${s.status}`;
+        return `#${s.id} · **${l?.title ?? '?'}** · ${fmtInTz(new Date(s.scheduled_at), tz)} · ${statusAr(s.status)}`;
       });
-      return interaction.reply({ embeds: [e('🗓️ Upcoming sessions', rows.length ? rows.join('\n') : '_None — use /schedule template + generate_')] });
+      return interaction.reply({ embeds: [e('🗓️ الحصص القادمة', rows.length ? rows.join('\n') : '_لا حصص — استخدم /schedule template ثم generate_')] });
     }
     if (sub === 'move') {
       const id = opts.getInteger('id', true);
       const date = opts.getString('date', true), time = opts.getString('time', true);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{2}:\d{2}$/.test(time)) {
-        return interaction.reply({ embeds: [e('❌ Bad format', 'date = `YYYY-MM-DD`, time = `HH:mm`', 0xed4245)], ephemeral: true });
+        return interaction.reply({ embeds: [e('❌ صيغة غير صحيحة', 'التاريخ = `YYYY-MM-DD`، الوقت = `HH:mm`', 0xed4245)], ephemeral: true });
       }
       const when = zonedToUtc(date, time, tz);
       A.setSession(id, when.toISOString());
       markDashboardDirty();
       await refreshDashboard(interaction.client, { force: true });
-      return interaction.reply({ embeds: [e('📆 Session moved', `#${id} → **${fmtInTz(when, tz)}**`)] });
+      return interaction.reply({ embeds: [e('📆 نُقلت الحصة', `#${id} → **${fmtInTz(when, tz)}**`)] });
     }
     if (sub === 'cancel') {
       A.cancelSession(opts.getInteger('id', true));
       markDashboardDirty();
-      return interaction.reply({ embeds: [e('🚫 Session cancelled', `#${opts.getInteger('id')} — the lesson stays in the course.`)] });
+      return interaction.reply({ embeds: [e('🚫 أُلغيت الحصة', `#${opts.getInteger('id')} — يبقى الدرس في الدورة.`)] });
     }
   }
 
@@ -162,10 +168,10 @@ export async function handleCommand(interaction) {
     if (opts.getChannel('study_vc')) setSetting('study_vc', opts.getChannel('study_vc').id);
     if (opts.getRole('ping_role')) setSetting('ping_role', opts.getRole('ping_role').id);
     return interaction.reply({
-      embeds: [e('⚙️ Setup saved', [
-        `Dashboard channel: <#${getSetting('channel_dashboard')}>`,
-        `Study VC: ${getSetting('study_vc') ? `<#${getSetting('study_vc')}>` : '_not set_'}`,
-        `Ping role: ${getSetting('ping_role') ? `<@&${getSetting('ping_role')}>` : '_not set_'}`,
+      embeds: [e('⚙️ حُفظ الإعداد', [
+        `قناة اللوحة: <#${getSetting('channel_dashboard')}>`,
+        `قناة الحصص الصوتية: ${getSetting('study_vc') ? `<#${getSetting('study_vc')}>` : '_غير محددة_'}`,
+        `رتبة التنبيه: ${getSetting('ping_role') ? `<@&${getSetting('ping_role')}>` : '_غير محددة_'}`,
       ].join('\n'))], ephemeral: true,
     });
   }
@@ -181,13 +187,13 @@ export async function handleCommand(interaction) {
       `${QCAT[q.category] ?? '📜'} ${q.title}${A.questCompletedBy(q.id, u.id) ? ' — ✅' : ''}`);
     const courses = A.listCourses().map(c => {
       const cp = A.courseProgress(c.id, u.id);
-      return `📖 **${c.title}** — ${cp.done}/${cp.total}${cp.next ? ` · next: ${cp.next.title}` : ' · كملها كاملة 🎉'}`;
+      return `📖 **${c.title}** — ${cp.done}/${cp.total}${cp.next ? ` · التالي: ${cp.next.title}` : ' · كملها كاملة 🎉'}`;
     });
     return interaction.reply({
       embeds: [e(`📈 ${u.username}`, [
         `🔥 سلسلة: **${streak}** · تقدمك:`,
-        courses.length ? `\n${courses.join('\n')}` : `Lessons: **${done.length}/${total}**`,
-        quests.length ? `\n**Checklist:**\n${quests.join('\n')}` : '',
+        courses.length ? `\n${courses.join('\n')}` : `الدروس: **${done.length}/${total}**`,
+        quests.length ? `\n**قائمة الإنجازات:**\n${quests.join('\n')}` : '',
       ].join('\n'))], ephemeral: true,
     });
   }
@@ -196,7 +202,7 @@ export async function handleCommand(interaction) {
     if (opts.getSubcommand() === 'list') {
       const rows = A.listQuests().map(q =>
         `${QCAT[q.category] ?? '📜'} **${q.title}** — ✅ ${A.questCompletionCount(q.id)}`);
-      return interaction.reply({ embeds: [e('📜 Checklist', rows.join('\n') || '_Empty — the owner adds items from the dashboard._')] });
+      return interaction.reply({ embeds: [e('📜 قائمة الإنجازات', rows.join('\n') || '_فارغة — يضيف المشرف العناصر من اللوحة._')] });
     }
   }
 
@@ -277,28 +283,26 @@ export async function handleCommand(interaction) {
     const nowDisabled = p ? !p.dms_enabled : true; // not enrolled -> opting in? default: enable DMs
     const newState = A.optOut(interaction.user.id, nowDisabled);
     A.upsertParticipant(interaction.user.id, interaction.user.username);
-    return interaction.reply({ content: newState ? '✅ Check-in DMs are **on**.' : '🔕 Check-in DMs are **off**.', ephemeral: true });
+    return interaction.reply({ content: newState ? '✅ رسائل المتابعة الخاصة **مفعّلة**.' : '🔕 رسائل المتابعة الخاصة **موقوفة**.', ephemeral: true });
   }
 
-  return interaction.reply({ content: 'Unknown command.', ephemeral: true });
+  return interaction.reply({ content: 'أمر غير معروف.', ephemeral: true });
 }
 
 export async function handleButton(interaction) {
   const [kind, action, idStr, slotIso] = interaction.customId.split(':');
   const boss = config.bossIds.includes(interaction.user.id);
 
-  if (kind === 'complete') {
-    const lessonId = parseInt(idStr, 10);
+  if (kind === 'complete') { // two-segment: complete:<lessonId>
+    const lesson = A.getLesson(parseInt(action, 10));
+    if (!lesson) return interaction.reply({ content: 'هذا الدرس لم يعد موجوداً.', ephemeral: true });
     A.upsertParticipant(interaction.user.id, interaction.user.username);
-    const res = A.completeLesson(interaction.user.id, lessonId);
-    if (!res.already) markMemberDirty(interaction.user.id);
-    if (res.already) return interaction.reply({ content: 'You already marked this lesson ✅', ephemeral: true });
+    const res = A.completeLesson(interaction.user.id, lesson.id);
+    if (res.already) return interaction.reply({ content: 'هذا الدرس مسجل من قبل ✅', ephemeral: true });
+    markMemberDirty(interaction.user.id);
     markDashboardDirty();
     await refreshDashboard(interaction.client, { force: true });
-    return interaction.reply({
-      content: `🎉 Recorded: **${res.granted} XP** — total **${xp} XP** (${lvl.emoji} ${lvl.name})`,
-      ephemeral: true,
-    });
+    return interaction.reply({ content: `🎉 سُجّل إنجاز **${lesson.title}** — بارك الله فيك!`, ephemeral: true });
   }
 
   if (kind === 'quest') {
@@ -320,42 +324,42 @@ export async function handleButton(interaction) {
   if (kind === 'sess') {
     const id = parseInt(idStr, 10);
     const session = A.getSession(id);
-    if (!session) return interaction.reply({ content: 'That session is gone.', ephemeral: true });
+    if (!session) return interaction.reply({ content: 'هذه الحصة لم تعد موجودة.', ephemeral: true });
     const lesson = A.getLesson(session.lesson_id);
 
     if (action === 'move' && session.status === 'missed_poll' && session.proposed_at) {
       A.setSession(id, session.proposed_at);
       markDashboardDirty();
       await refreshDashboard(interaction.client, { force: true });
-      return interaction.update({ content: `📆 Moved **${lesson.title}** to **${fmtInTz(new Date(session.proposed_at), config.tz)}** — see you there!`, components: [] });
+      return interaction.update({ content: `📆 نُقل **${lesson.title}** إلى **${fmtInTz(new Date(session.proposed_at), config.tz)}** — نراكم هناك!`, components: [] });
     }
     if (action === 'slots' && session.status === 'missed_poll') {
-      if (!boss) return interaction.reply({ content: 'Only the academy owner can pick a custom time.', ephemeral: true });
+      if (!boss) return interaction.reply({ content: 'اختيار موعد آخر لمشرف الأكاديمية فقط.', ephemeral: true });
       const after = new Date(session.scheduled_at);
       const slots = [proposeSlot(after, session), ...[1, 2].map(d => new Date(after.getTime() + d * 86400000))];
       const row = new ActionRowBuilder().addComponents(slots.slice(0, 3).map(s =>
         new ButtonBuilder().setCustomId(`sess:set:${id}:${s.toISOString()}`).setLabel(fmtInTz(s, config.tz)).setStyle(ButtonStyle.Secondary)));
-      return interaction.reply({ content: 'Pick a new time:', components: [row], ephemeral: true });
+      return interaction.reply({ content: 'اختر موعداً جديداً:', components: [row], ephemeral: true });
     }
     if (action === 'set') {
-      if (!boss) return interaction.reply({ content: 'Only the academy owner can do that.', ephemeral: true });
+      if (!boss) return interaction.reply({ content: 'هذا الإجراء لمشرف الأكاديمية فقط.', ephemeral: true });
       A.setSession(id, slotIso);
       markDashboardDirty();
       await refreshDashboard(interaction.client, { force: true });
-      return interaction.update({ content: `📆 Moved **${lesson.title}** to **${fmtInTz(new Date(slotIso), config.tz)}**`, components: [] });
+      return interaction.update({ content: `📆 نُقل **${lesson.title}** إلى **${fmtInTz(new Date(slotIso), config.tz)}**`, components: [] });
     }
     if (action === 'skip') {
-      if (!boss) return interaction.reply({ content: 'Only the academy owner can do that.', ephemeral: true });
+      if (!boss) return interaction.reply({ content: 'هذا الإجراء لمشرف الأكاديمية فقط.', ephemeral: true });
       A.cancelSession(id);
       stopStream();
       markDashboardDirty();
-      return interaction.update({ content: `⏭️ Skipped **${lesson.title}** — it stays in the course list.`, components: [] });
+      return interaction.update({ content: `⏭️ تُخطّيت حصة **${lesson.title}** — يبقى الدرس في قائمة الدورة.`, components: [] });
     }
     if (action === 'finish') {
-      if (!boss && !isAdmin(interaction)) return interaction.reply({ content: 'Only the academy owner can finish the session.', ephemeral: true });
+      if (!boss && !isAdmin(interaction)) return interaction.reply({ content: 'إنهاء الحصة لمشرف الأكاديمية فقط.', ephemeral: true });
       await interaction.deferReply();
       await finishSession({ client: interaction.client, bus: null, sessionId: id });
-      return interaction.editReply({ content: '✅ Session finished — attendees got their XP.' });
+      return interaction.editReply({ content: '✅ انتهت الحصة وسُجّل حضور الحاضرين.' });
     }
   }
 
@@ -395,7 +399,7 @@ export async function handleButton(interaction) {
     await interaction.deferUpdate();
     await interaction.editReply(await memberDashPayload(interaction.user.id, 'courses'));
     return interaction.followUp({
-      content: res.already ? 'هذا الدرس مسجل من قبل ✅' : `✅ سُجّل إنجاز **${cp.next.title}** (+${res.granted} XP)`,
+      content: res.already ? 'هذا الدرس مسجل من قبل ✅' : `✅ سُجّل إنجاز **${cp.next.title}**`,
       ephemeral: true,
     });
   }
@@ -468,13 +472,13 @@ export async function handleButton(interaction) {
 
   if (kind === 'mnoop') return interaction.deferUpdate();
 
-  return interaction.reply({ content: 'Unknown button.', ephemeral: true });
+  return interaction.reply({ content: 'زر غير معروف.', ephemeral: true });
 }
 
 // right-click a message with a PDF -> publish flow (same modal as the upload channel)
 export async function handleContextMenu(interaction) {
   if (interaction.commandName !== '📚 نشر في المكتبة') {
-    return interaction.reply({ content: 'Unknown command.', ephemeral: true });
+    return interaction.reply({ content: 'أمر غير معروف.', ephemeral: true });
   }
   if (!isAdmin(interaction)) return interaction.reply({ content: 'للإدارة فقط.', ephemeral: true });
   const att = pdfAttachmentOf(interaction.targetMessage);
@@ -516,7 +520,7 @@ export async function handleSelect(interaction) {
       files: [new AttachmentBuilder(pdf.buffer, { name: pdf.name })],
     });
   }
-  return interaction.reply({ content: 'Unknown menu.', ephemeral: true });
+  return interaction.reply({ content: 'قائمة غير معروفة.', ephemeral: true });
 }
 
 // modal submits — reading-group + personal book page inputs live here
@@ -563,5 +567,5 @@ export async function handleModal(interaction) {
       return interaction.editReply(`✅ نُشر **${r.book.title}**${genre ? ` تحت «${genre}»` : ''} في فورم المكتبة${r.isNew ? ' وأُضيف للمكتبة' : ''} — متاح للتحميل من لوحات الأعضاء.`);
     } catch (e) { return interaction.editReply(`❌ ${e.message}`); }
   }
-  return interaction.reply({ content: 'Unknown form.', ephemeral: true });
+  return interaction.reply({ content: 'نموذج غير معروف.', ephemeral: true });
 }

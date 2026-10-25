@@ -1,7 +1,10 @@
 # Dashboard API Reference — مرجع واجهة البرمجة
 
 Everything a custom dashboard needs. Base URL: `http://localhost:8420`
-(عند النشر على السيرفر السحابي: نفس المسارات على عنوان السيرفر)
+(على الجهاز المضيف الحالي (التابلت): `http://192.168.100.87:8420`)
+
+> Broader project docs live in [`docs/`](docs/) — overview, architecture, DB, Discord surfaces,
+> deployment. This file is the detailed API reference with request/response examples.
 
 ## Authentication — المصادقة
 
@@ -18,7 +21,8 @@ All `/api/dash/*` endpoints need the cookie. Wrong/missing cookie → `401`.
 ```
 GET  /login                      → HTML login form (or build your own and POST to it)
 POST /login   (form: password)   → sets cookie, redirects to /
-GET  /logout                    → clears cookie
+GET  /logout                    → revokes the session + clears cookie
+(5 wrong passwords in 15 min from one IP, or 30 overall → 429 until the window passes)
 ```
 
 ---
@@ -153,6 +157,19 @@ Discord members see the same per-course breakdown with `/myprogress`.
 | `/api/dash/group/end` | `{ id }` | end the group |
 
 `GET /api/dash/data` includes `books` (with readers/avg%/finished stats) and `groups` (each with a `roster`: every member's `page/total_pages`, finished, updated_at). Members update their page from Discord — the group buttons, or `/group page <id> <page>`; `/books` shows their shelf. Page >= total marks the book finished automatically.
+
+### Member management — إدارة الأعضاء
+| Endpoint | Body | Effect |
+|---|---|---|
+| `/api/dash/member/rename` | `{ id: "<userId>", name }` | rename a participant |
+| `/api/dash/member/remove` | `{ id: "<userId>" }` | wipe the member from ~10 tables **and** delete their private Discord channel |
+
+### Quiz questions — أسئلة الاختبار
+| Endpoint | Body | Effect |
+|---|---|---|
+| `/api/dash/question/add` | `{ courseId, lessonId?, question, options: ["أ","ب",…], correctIndex, xp? }` | add a multiple-choice question (≤5 options, default xp 10) |
+| `/api/dash/question/remove` | `{ id }` | delete a question |
+| `/api/dash/question/send` | `{ id }` | post the question NOW to the announcements channel with 🇦–🇪 answer buttons (questions also auto-post after each class) |
 
 ### Settings — الإعدادات
 `POST /api/dash/settings` — any of:

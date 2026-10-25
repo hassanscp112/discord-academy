@@ -1,83 +1,38 @@
-# Discord Academy
+# هُدَى — Discord Academy
 
-Two-bot study-group system for Discord:
+A complete study-academy system inside a private Arabic Discord server (مِداد): multi-course
+scheduling of YouTube lessons, live voice-channel classes (the bot plays the lesson audio),
+attendance, quizzes, books + PDF library, per-member private dashboard channels (rendered
+image cards), and an Arabic RTL web dashboard for the owner — all user-facing text in Arabic.
 
-- **Academy Coach** (cloud VM, 24/7) — lessons, schedule, session reminders,
-  voice-channel attendance, missed-class auto-reschedule, check-in nudges,
-  XP/levels/quests, live dashboard embed, web dashboard + private API.
-- **AI Admin** (your PC) — local planning studio with direct Ollama: chat in
-  "coach mode" to restructure the course, then **Publish** pushes the plan to
-  the Coach's API. Optionally also answers you in a private Discord channel.
+**📖 Full documentation: start at [`AGENTS.md`](AGENTS.md) → [`docs/`](docs/).**
+`docs/1-OVERVIEW.md` explains everything for a newcomer; `docs/7-GOTCHAS-KNOWN-BUGS.md` lists
+the hard rules and known bugs.
 
-## Quick start (development, on your PC)
+## Quick start (development, on a PC)
 
 ```bash
-npm install
-copy .env.example .env      # fill in tokens (see below)
-npm run coach               # Coach: dashboard on http://localhost:8420
-npm run studio              # AI Admin studio on http://localhost:8421
-npm test                    # engine test suite (no Discord needed)
+npm install                  # Node >= 22.5 required (node:sqlite)
+copy .env.example .env       # fill COACH_TOKEN, GUILD_ID, DASH_PASSWORD, API_TOKEN, TZ
+npm test                     # engine test suite — no Discord needed
+npm run coach                # bot + dashboard at http://localhost:8420
+COACH_DISABLE_DISCORD=1 npm run coach   # dry-run: web + engines only
+npm start                    # production entry: fetches yt-dlp/ffmpeg if missing, then boots
 ```
 
-Dry-run mode without Discord tokens: set `COACH_DISABLE_DISCORD=1` and start
-the Coach — web dashboard, API, and the full session engine run against the DB
-while messages print to the console.
+## Production
 
-## Discord setup (server-owner account!)
+Runs 24/7 on an Android tablet under Termux (LAN dashboard), supervised by a boot script with a
+10 s crash-restart loop. The Windows PC copy (`AcademyCoach` scheduled task) is the stopped
+fallback; Oracle Cloud was abandoned (requires a credit card). Deploy runbook + ops
+troubleshooting: `docs/6-DEPLOYMENT-OPS.md`.
 
-1. Go to <https://discord.com/developers/applications> → **New Application**
-   → name it e.g. `Academy Coach`. Repeat for `AI Admin`.
-2. In each app: **Bot** tab → *Reset Token* → copy into `.env`
-   (`COACH_TOKEN`, `AI_TOKEN`).
-3. Privileged intents (**Bot** tab, both apps):
-   - Coach: **Server Members Intent** ON
-   - AI Admin: **Message Content Intent** ON
-4. Invite links (**OAuth2 → URL Generator**): check `bot` +
-   - Coach scopes/permissions: `Send Messages`, `Embed Links`, `Read Message
-     History`, `Add Reactions`, `View Channels`, `Connect`, `Manage Roles`
-     (for level roles), `Manage Channels` (creates each member's private
-     progress channel)
-   - AI Admin: `Send Messages`, `Read Message History`, `View Channels`
-   - Open the generated URL, pick your server. Bots land at the bottom of the
-     member list — drag roles as you like.
-5. In Discord: enable Developer Mode (Settings → Advanced), right-click your
-   server → *Copy Server ID* → `GUILD_ID`. Right-click yourself → *Copy User
-   ID* → `BOSS_IDS`.
-
-## First run in the server
+## Layout
 
 ```
-/setup dashboard:#academy-hall study_vc:🔊-study-room ping_role:@Students
-/lesson add title:"Lesson 1 — Intro" url:<youtube link>
-/schedule template days:sun,wed time:20:00
-/schedule generate
-```
-
-The dashboard embed appears in the dashboard channel and updates itself.
-
-## AI Admin (Ollama)
-
-1. Install Ollama (<https://ollama.com>), set models dir to E:
-   ```bat
-   setx OLLAMA_MODELS "E:\Ollama\models"
-   ollama pull qwen2.5:7b
-   ```
-2. `npm run studio` → open <http://localhost:8421>
-3. Chat: *"restructure into 3 lessons/week, sun+wed 20:00, add a quest for
-   lessons 1–2"* → review the draft → **Publish**.
-
-## Production (Oracle Cloud Free VM)
-
-Deployed with systemd + Caddy (HTTPS) — see `deploy/` (created during the
-deploy step). The Coach runs as `academy.service`; the dashboard/API sit behind
-a password and your domain.
-
-## Project layout
-
-```
-src/core/       shared: config, sqlite schema, templates (edit wording here!), time
-src/coach/      the cloud bot: commands, session engine, check-ins, gamification,
-                dashboard embed, web dashboard + API, publish-apply
-src/ai-admin/   the PC app: ollama client, draft planner + tools, studio UI
-scripts/        test suite (npm test)
+src/core/     domain logic (no Discord): db schema, engine, time math, Arabic templates
+src/coach/    the Discord bot + voice streaming + Express web/API
+src/ai-admin/ optional local Ollama planner (PC)
+public/       owner dashboard SPA (static, no build step)
+docs/         the documentation (1=overview … 8=workflow)
 ```

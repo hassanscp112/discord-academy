@@ -3,3 +3,6 @@ data/
 .env
 *.log
 phone-setup/
+tools/yt-dlp
+tools/ffmpeg
+tools/*.part

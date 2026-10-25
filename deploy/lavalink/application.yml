@@ -1,0 +1,27 @@
+# Lavalink v4 node for the OPTIONAL audio backend (AUDIO_BACKEND=lavalink).
+# Run next to the bot:  java -jar Lavalink.jar   (Lavalink 4.2.2, Java 17+)
+# Read docs/7 first — as of 2026-10-25 this backend is NOT recommended:
+# YouTube playback needs the plugin's OAuth/poToken setup, and mid-file
+# starts of the local .opus cache crash lavaplayer. ffmpeg stays the fallback.
+server:
+  port: 2333
+  address: 127.0.0.1
+lavalink:
+  plugins:
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.2"
+      snapshot: false
+  server:
+    password: "youshallnotpass"   # must match LAVALINK_PASSWORD
+    sources:
+      youtube: false   # replaced by the youtube-source plugin
+      local: true      # lets the node read data/cache/*.opus (LAVALINK_LOCAL_FILES=1)
+      http: true
+plugins:
+  youtube:
+    enabled: true
+    allowSearch: true
+    clients: ["MUSIC", "ANDROID_VR", "WEB", "WEBEMBEDDED"]
+logging:
+  level:
+    root: WARN
+    lavalink: INFO

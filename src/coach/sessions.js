@@ -211,11 +211,11 @@ export async function finishSession({ client, bus, sessionId }) {
   const lesson = A.getLesson(res.session.lesson_id);
   await bus.postTo('channel_dashboard', {
     content: fill(templates.session_done, {
-      lesson_title: lesson?.title ?? '?', xp: res.attendees.length ? 'attendance + streak bonus' : '0',
+      lesson_title: lesson?.title ?? '?',
       part_line: partLine(res.session),
     }),
     components: [new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`complete:${res.session.lesson_id}`).setLabel('✅ I finished this lesson').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`complete:${res.session.lesson_id}`).setLabel('✅ أنهيت هذا الدرس').setStyle(ButtonStyle.Success),
     )],
   });
   // comprehension check: the lesson's questions go out right after class

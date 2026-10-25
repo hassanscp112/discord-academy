@@ -9,10 +9,22 @@ export const config = {
   bossIds: env('BOSS_IDS').split(',').map(s => s.trim()).filter(Boolean),
   tz: env('TZ', 'UTC'),
   dbPath: env('DB_PATH', './data/academy.db'),
-  port: Number(env('PORT', '8420')),
+  // container hosts (bot-hosting.net / Pterodactyl) hand out the port as SERVER_PORT
+  port: Number(env('SERVER_PORT') || env('PORT', '8420')),
+  trustProxy: env('TRUST_PROXY') === '1', // behind the host's HTTPS proxy: real client IP from X-Forwarded-For
   dashPassword: env('DASH_PASSWORD'),
   apiToken: env('API_TOKEN'),
   disableDiscord: env('COACH_DISABLE_DISCORD') !== '',
+  // class audio: 'ffmpeg' (built-in yt-dlp→ffmpeg player) or 'lavalink' (needs a Lavalink v4 node;
+  // ffmpeg stays the automatic fallback)
+  audioBackend: env('AUDIO_BACKEND', 'ffmpeg').toLowerCase(),
+  lavalink: {
+    host: env('LAVALINK_HOST'),
+    port: Number(env('LAVALINK_PORT', '2333')),
+    password: env('LAVALINK_PASSWORD', 'youshallnotpass'),
+    secure: env('LAVALINK_SECURE') === '1',
+    localFiles: env('LAVALINK_LOCAL_FILES') === '1', // node is on this machine and may read data/cache
+  },
   studio: {
     port: Number(env('STUDIO_PORT', '8421')),
     ollamaUrl: env('OLLAMA_URL', 'http://127.0.0.1:11434'),

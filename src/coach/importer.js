@@ -1,9 +1,7 @@
 // Reads course structure out of YouTube via yt-dlp: playlists become lesson
 // lists, single videos give their real duration (needed for auto-splitting).
 import { spawn } from 'node:child_process';
-import { cookieArgs } from './ytdlp.js';
-
-const YTDLP = process.env.YTDLP_PATH ?? 'tools/yt-dlp.exe';
+import { cookieArgs, YTDLP } from './ytdlp.js';
 
 function runYtdlp(args, timeoutMs) {
   return new Promise((resolve, reject) => {

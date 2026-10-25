@@ -16,6 +16,7 @@ import { syncCourseCards, ensureLearnerRole, grantLearnerRole } from './coursere
 import { warmCardRenderer } from './card.js';
 import { refreshAcademyDashboard, ensureVoiceChannel, ensureHubOrder, removeLegacyDashboard } from './acadashboard.js';
 import { onUploadMessage, ensureUploadChannel, postUploadInstructions } from './uploads.js';
+import { initLavalink } from './lavalink.js';
 import * as A from '../core/academy.js';
 
 const log = (...a) => console.log('[coach]', new Date().toISOString(), ...a);
@@ -46,7 +47,9 @@ function activeLiveSession() {
 if (client) {
   client.once('ready', async () => {
     log(`logged in as ${client.user.tag}`);
-    client.user.setActivity('the academy 🎓', { type: ActivityType.Watching });
+    client.user.setActivity('الأكاديمية 🎓', { type: ActivityType.Watching });
+    // optional Lavalink audio node (AUDIO_BACKEND=lavalink); ffmpeg covers any gap
+    initLavalink(client).catch(e => log('lavalink init:', e.message));
     const guild = client.guilds.cache.get(config.guildId);
     if (!guild) { log(`!! guild ${config.guildId} not found — check GUILD_ID`); }
     else {
@@ -89,7 +92,7 @@ if (client) {
       else if (i.isStringSelectMenu()) await handleSelect(i);
     } catch (e) {
       console.error('[coach] interaction error:', e);
-      const msg = { content: `⚠️ ${e.message ?? 'Something went wrong.'}`, ephemeral: true };
+      const msg = { content: '⚠️ حدث خطأ غير متوقع — أُبلغ المشرف، حاول مرة أخرى بعد قليل.', ephemeral: true };
       if (i.deferred || i.replied) await i.editReply(msg).catch(() => null);
       else await i.reply(msg).catch(() => null);
     }

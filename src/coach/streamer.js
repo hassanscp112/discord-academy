@@ -3,15 +3,17 @@
 // Long videos start mid-way via offsetSec, and the owner can pause / seek /
 // re-aim the stream from the web dashboard: playback is an ffmpeg child we
 // restart at the wanted position, so every control op is "respawn at X".
+// With AUDIO_BACKEND=lavalink the same state machine drives a Lavalink node
+// instead (lavalink.js); any Lavalink failure drops back to the ffmpeg path.
 import { joinVoiceChannel, createAudioResource, createAudioPlayer, NoSubscriberBehavior, StreamType, getVoiceConnection, VoiceConnectionStatus } from '@discordjs/voice';
 import { spawn } from 'node:child_process';
 import { mkdirSync, existsSync, unlinkSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { getSetting } from '../core/db.js';
 import { config } from '../core/config.js';
-import { cookieArgs } from './ytdlp.js';
+import { cookieArgs, YTDLP, FFMPEG } from './ytdlp.js';
+import { lavalinkEnabled, lavalinkPlay, lavalinkUpdate, lavalinkStop, lavalinkHasPlayer, trackIdentifiers, onLavalinkFailure } from './lavalink.js';
 
-const YTDLP = process.env.YTDLP_PATH ?? 'tools/yt-dlp.exe';
 const VIDEOBOT = process.env.VIDEOBOT_URL ?? 'http://127.0.0.1:8422';
 const CACHE_DIR = 'data/cache';
 const prefetching = new Set();
@@ -20,6 +22,7 @@ let procs = [];
 let volume = 1; // remembered across streams; applied by the ffmpeg pipeline
 // live playback state; position = baseSec + elapsed wall-clock (or pausedAt)
 let play = null;
+let lastClient = null; // for the mid-class Lavalink -> ffmpeg fallback
 
 function cachePath(lessonId) { return join(CACHE_DIR, `lesson-${lessonId}.opus`); }
 
@@ -29,7 +32,7 @@ export function prefetch(lessonId, url) {
   prefetching.add(lessonId);
   mkdirSync(CACHE_DIR, { recursive: true });
   const ytdlp = spawn(YTDLP, ['-f', 'bestaudio/best', '-o', '-', '--no-playlist', '--js-runtimes', 'node', ...cookieArgs(), url], { stdio: ['ignore', 'pipe', 'pipe'] });
-  const ffmpeg = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0', '-vn', '-ac', '2', '-ar', '48000', '-c:a', 'libopus', '-b:a', '96k', '-f', 'opus', cachePath(lessonId)], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const ffmpeg = spawn(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0', '-vn', '-ac', '2', '-ar', '48000', '-c:a', 'libopus', '-b:a', '96k', '-f', 'opus', cachePath(lessonId)], { stdio: ['pipe', 'pipe', 'pipe'] });
   swallow(ytdlp.stdout, ytdlp.stderr, ffmpeg.stdin, ffmpeg.stdout, ffmpeg.stderr, ytdlp, ffmpeg);
   const done = (ok) => {
     prefetching.delete(lessonId);
@@ -52,17 +55,18 @@ function killProcs() {
   procs = [];
 }
 
-export function isStreaming() {
-  return !!play && play.pausedAt == null && !!player && player.state.status === 'playing';
+// is audio actually going out right now (either backend)?
+function audioFlowing() {
+  if (play?.backend === 'lavalink') return lavalinkHasPlayer(config.guildId);
+  return !!player && player.state.status === 'playing';
 }
 
-export async function startStream(client, { lessonId, url, sessionId = null, title = '', offsetSec = 0, durationSec = null, sessionLenSec = null }) {
-  if (!url) return false;
-  stopStream();
-  const vcId = getSetting('study_vc');
-  const guild = client?.guilds?.cache?.get(config.guildId);
-  if (!vcId || !guild) return false;
+export function isStreaming() {
+  return !!play && play.pausedAt == null && audioFlowing();
+}
 
+// @discordjs/voice connection + player for the built-in ffmpeg path
+function joinWithFfmpegPlayer(guild, vcId) {
   const connection = joinVoiceChannel({
     channelId: vcId,
     guildId: config.guildId,
@@ -79,9 +83,54 @@ export async function startStream(client, { lessonId, url, sessionId = null, tit
   player.on('error', e => console.log('[streamer] player error:', e.message));
   // THE link: without subscribing, the player plays into nothing and Discord hears silence
   connection.subscribe(player);
+}
 
-  play = { sessionId, lessonId, title, url, baseSec: 0, startedAt: 0, pausedAt: null, durationSec, sessionLenSec, warming: false };
+// Lavalink died mid-class (node down / track error): carry on with ffmpeg from
+// the same second so the room never goes silent.
+onLavalinkFailure(async (reason) => {
+  if (play?.backend !== 'lavalink' || play.warming) return;
+  const mine = play;
+  const at = playerPosition() ?? 0;
+  console.log(`[streamer] lavalink failed (${reason}) — switching to ffmpeg @${Math.floor(at)}s`);
+  await lavalinkStop(config.guildId);
+  await new Promise(r => setTimeout(r, 1500)); // let the voice leave settle before rejoining
+  const guild = lastClient?.guilds?.cache?.get(config.guildId);
+  const vcId = getSetting('study_vc');
+  if (play !== mine || !guild || !vcId) return; // class ended meanwhile
+  play.backend = 'ffmpeg';
+  joinWithFfmpegPlayer(guild, vcId);
+  if (play.pausedAt == null) spawnPlayback(at);
+});
+
+export async function startStream(client, { lessonId, url, sessionId = null, title = '', offsetSec = 0, durationSec = null, sessionLenSec = null }) {
+  if (!url) return false;
+  stopStream();
+  const vcId = getSetting('study_vc');
+  const guild = client?.guilds?.cache?.get(config.guildId);
+  if (!vcId || !guild) return false;
+  lastClient = client;
   const offset = Math.max(0, offsetSec || 0);
+
+  // Lavalink first when enabled — it seeks YouTube natively, so no warm-up step
+  if (lavalinkEnabled()) {
+    const mine = play = { sessionId, lessonId, title, url, baseSec: offset, startedAt: Date.now(), pausedAt: offset, durationSec, sessionLenSec, warming: true, backend: 'lavalink' };
+    const cached = existsSync(cachePath(lessonId));
+    const ok = await lavalinkPlay({
+      guildId: config.guildId, channelId: vcId,
+      identifiers: trackIdentifiers({ cacheFile: cached ? cachePath(lessonId) : null, url, fromSec: offset }),
+      fromSec: offset, endSec: sessionLenSec ? offset + sessionLenSec : null, volume,
+    });
+    if (play !== mine) { if (ok) await lavalinkStop(config.guildId); return false; } // class finished meanwhile
+    if (ok) {
+      Object.assign(play, { warming: false, pausedAt: null, startedAt: Date.now() });
+      console.log(`[streamer] joined study VC via lavalink, streaming "${title}" from ${Math.floor(offset)}s`);
+      return true;
+    }
+    console.log('[streamer] lavalink could not play — using the built-in ffmpeg player');
+  }
+
+  joinWithFfmpegPlayer(guild, vcId);
+  play = { sessionId, lessonId, title, url, baseSec: 0, startedAt: 0, pausedAt: null, durationSec, sessionLenSec, warming: false, backend: 'ffmpeg' };
 
   // Part 2+ with no cache: the live YouTube section pipe takes tens of seconds
   // (or fails) before any audio — download the full audio at full bandwidth,
@@ -151,7 +200,7 @@ function spawnPlayback(fromSec) {
   }
   outArgs.push('-f', 'opus', 'pipe:1');
 
-  const ffmpeg = spawn('ffmpeg', [...inArgs, ...outArgs], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const ffmpeg = spawn(FFMPEG, [...inArgs, ...outArgs], { stdio: ['pipe', 'pipe', 'pipe'] });
   procs = ytdlp ? [ytdlp, ffmpeg] : [ffmpeg];
   swallow(ffmpeg.stdin, ffmpeg.stdout, ffmpeg.stderr, ffmpeg, ytdlp);
   if (ytdlp) {
@@ -166,6 +215,22 @@ function spawnPlayback(fromSec) {
   play.startedAt = Date.now();
 }
 
+// start/continue audio at fromSec on whichever backend owns the class
+function playFrom(fromSec) {
+  if (play?.backend === 'lavalink') {
+    lavalinkUpdate(config.guildId, { paused: false, positionSec: fromSec })
+      .catch(e => console.log('[streamer] lavalink update failed:', e.message));
+    play.baseSec = Math.max(0, fromSec);
+    play.startedAt = Date.now();
+  } else spawnPlayback(fromSec);
+}
+
+function silence() {
+  if (play?.backend === 'lavalink') {
+    lavalinkUpdate(config.guildId, { paused: true }).catch(e => console.log('[streamer] lavalink pause failed:', e.message));
+  } else killProcs(); // voice connection and player stay up
+}
+
 export function playerPosition() {
   if (!play) return null;
   const pos = play.pausedAt != null ? play.pausedAt : play.baseSec + (Date.now() - play.startedAt) / 1000;
@@ -178,7 +243,8 @@ export function playerState() {
     live: true,
     paused: !play.warming && play.pausedAt != null,
     buffering: play.warming,
-    streaming: !!player && player.state.status === 'playing',
+    streaming: audioFlowing(),
+    backend: play.backend,
     sessionId: play.sessionId,
     lessonId: play.lessonId,
     title: play.title,
@@ -197,7 +263,7 @@ export function controlPlayer(op, { delta = 0, value = null } = {}) {
   if (op === 'pause') {
     if (play.pausedAt == null) {
       play.pausedAt = Math.min(pos, dur);
-      killProcs(); // silence; voice connection and player stay up
+      silence();
       console.log(`[streamer] paused @${Math.floor(play.pausedAt)}s`);
     }
     return { ok: true };
@@ -206,7 +272,7 @@ export function controlPlayer(op, { delta = 0, value = null } = {}) {
     if (play.pausedAt != null) {
       const at = play.pausedAt;
       play.pausedAt = null;
-      spawnPlayback(at);
+      playFrom(at);
     }
     return { ok: true };
   }
@@ -216,21 +282,23 @@ export function controlPlayer(op, { delta = 0, value = null } = {}) {
     let to = Math.max(0, pos + d);
     if (Number.isFinite(dur)) to = Math.min(to, Math.max(0, dur - 1));
     if (play.pausedAt != null) play.pausedAt = to;
-    else spawnPlayback(to);
+    else playFrom(to);
     console.log(`[streamer] seek ${d > 0 ? '+' : ''}${d}s -> ${Math.floor(to)}s`);
     return { ok: true };
   }
   if (op === 'restart') {
     play.pausedAt = null;
-    spawnPlayback(0);
+    playFrom(0);
     return { ok: true };
   }
   if (op === 'volume') {
     const v = Number(value);
     if (!Number.isFinite(v) || v < 0 || v > 2) return { ok: false, error: 'مستوى صوت غير صالح' };
     volume = v;
+    if (play.backend === 'lavalink') {
+      lavalinkUpdate(config.guildId, { volume: v }).catch(e => console.log('[streamer] lavalink volume failed:', e.message));
     // volume rides the ffmpeg pipeline — respawn so the change is heard now
-    if (play.pausedAt == null && player) spawnPlayback(playerPosition() ?? 0);
+    } else if (play.pausedAt == null && player) spawnPlayback(playerPosition() ?? 0);
     return { ok: true };
   }
   return { ok: false, error: 'أمر غير معروف' };
@@ -240,6 +308,7 @@ export function stopStream() {
   killProcs();
   fetch(`${VIDEOBOT}/stop`, { method: 'POST', signal: AbortSignal.timeout(3000) }).catch(() => {});
   play = null;
+  lavalinkStop(config.guildId).catch(() => {});
   if (player) { try { player.stop(); } catch {} }
   player = null;
   const conn = getVoiceConnection(config.guildId);
