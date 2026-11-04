@@ -10,14 +10,12 @@ Last verified against code: 2026-10-14 (commit `c1ac9b2`).
 
 ---
 
-## The 4 components
+## The 2 components
 
 | Component | What it is | Entry point | Where it runs |
 |---|---|---|---|
-| **Academy Coach** (المدرب) | The 24/7 Discord bot. Scheduling, voice streaming, cards, quizzes, nudges, books, web API — everything. | `src/coach/index.js` | **Huawei MediaPad tablet** (Termux), LAN `192.168.100.87` |
-| **Web dashboard «هُدَى»** | The owner's Arabic RTL control panel (SPA, no build step). Served by the Coach's Express on port **8420**. | `public/index.html` + `public/app.js` | Same host as the Coach (tablet) |
-| **AI Admin studio** | Local Ollama-powered planning chat that publishes changes to the Coach API. Optional, effectively superseded by the SPA. | `src/ai-admin/index.js` | Owner's PC, port 8421 |
-| **VideoBot sidecar** | Experimental separate process that screenshares the lesson *video* (H264 Go-Live). Currently dormant — the Coach only calls its `/stop`. | `src/videobot/videobot.cjs` | Same host as the Coach, port 8422 |
+| **Academy Coach** (المدرب) | The 24/7 Discord bot. Scheduling, voice streaming, cards, quizzes, nudges, books, web API — everything. | `src/coach/index.js` | **bot-hosting.net** (Node 24 container) |
+| **Web dashboard «هُدَى»** | The owner's Arabic RTL control panel (SPA, no build step). Served by the Coach's Express on port **8420**. | `public/index.html` + `public/app.js` | Same host as the Coach (HTTPS subdomain) |
 
 Stack: Node.js ≥ 22.5 (ESM), discord.js v14, `node:sqlite` (built-in `DatabaseSync` — **no** better-sqlite3), @discordjs/voice, Express, puppeteer-core (renders cards with the system browser), child processes `yt-dlp` + `ffmpeg`.
 

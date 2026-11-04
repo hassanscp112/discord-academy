@@ -6,7 +6,6 @@
 npm install                # first time (Node >= 22.5 required — node:sqlite)
 npm test                   # engine test suite — NO Discord tokens needed
 npm run coach              # start the bot + dashboard (needs .env)
-npm run studio             # optional AI admin studio (PC, needs Ollama)
 COACH_DISABLE_DISCORD=1 npm run coach   # dry-run: web + API + engines, messages print to console
 ```
 
@@ -14,7 +13,7 @@ COACH_DISABLE_DISCORD=1 npm run coach   # dry-run: web + API + engines, messages
 
 Self-contained (~100 assertions, all green as of 2026-10-14). Before importing anything it sets
 `DB_PATH=./data/test-academy.db`, `TZ=UTC`, `COACH_DISABLE_DISCORD=1`, `DASH_PASSWORD=test`,
-`API_TOKEN=test-token` and wipes the throwaway DB — **this env-before-import order is required**
+`AUDIO_CACHE_DIR`, `BACKUP_DIR`, `YTDLP_COOKIES` (throwaway paths) and wipes the throwaway DB — **this env-before-import order is required**
 (the DB is a singleton; see gotcha #12).
 
 Coverage blocks:
@@ -37,7 +36,7 @@ The suite boots the real Express app in dry-run, so web routes are exercised too
 
 1. `COACH_DISABLE_DISCORD=1 npm run coach` for pure engine/web work — dashboard at
    `http://localhost:8420`, log in with `DASH_PASSWORD` from `.env`.
-2. Full bot work: `npm run coach` on the PC — **but only while the tablet instance is stopped**
+2. Full bot work: `npm run coach` on the PC — **but only while the bot-hosting.net instance is stopped**
    (two live bots double-post to Discord). Coordinate with the owner.
 3. Real Discord objects (guild/channels) are read from the live DB — for experiments use
    `DB_PATH=./data/dev.db` to get a fresh sandbox DB.
@@ -56,13 +55,12 @@ The suite boots the real Express app in dry-run, so web routes are exercised too
 
 ## Deploy (see `docs/6` for the full runbook)
 
-Commit → `git bundle create academy.bundle master` → scp to tablet → `git pull` + `npm ci` →
-`pkill -f 'node src/coach'` (supervisor loop restarts with new code). Verify in `~/coach.log`
-and the Discord hub.
+`npm test` → commit → `git push origin master:main` → **Restart** in the bot-hosting.net panel (auto-pulls
+`main`). Verify in the panel Console (`[card] warm-up ok`, `tz: Asia/Riyadh`) and the Discord hub.
 
 ## Git conventions
 
-Single branch `master`, batch commits after features are verified live (history shows feature-batch
-messages like "v5-v8 batch"). `data/`, `.env`, `*.log`, `phone-setup/` are gitignored.
+Local branch `master` pushes to GitHub `main` (the branch the host deploys). The repo is **public** —
+`data/`, `.env`, `*.log`, `phone-setup/`, downloaded `tools/` binaries are gitignored; never commit secrets.
 Uncommitted work may exist — the owner runs parallel agent sessions; check `git status` and
 never reset/discard changes you didn't make.

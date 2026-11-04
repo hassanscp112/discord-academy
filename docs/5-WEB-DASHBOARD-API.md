@@ -4,7 +4,7 @@ Two surfaces share port 8420 (`src/coach/web.js`):
 1. the owner SPA «هُدَى · لوحة الأكاديمية» from `public/` (no build step, served live from disk), and
 2. the JSON API.
 
-On the tablet: `http://192.168.100.87:8420` (PC dev: `http://localhost:8420`).
+Production: the bot-hosting.net HTTPS subdomain (Domains tab). PC dev: `http://localhost:8420`.
 
 Detailed request/response examples also live in the root `DASHBOARD_API.md`.
 
@@ -13,7 +13,6 @@ Detailed request/response examples also live in the root `DASHBOARD_API.md`.
 | Who | How |
 |---|---|
 | Browser | Cookie `dash` = random per-login session token (HttpOnly, SameSite=Lax, `Secure` over HTTPS, 30 d). `GET /login` form → `POST /login` with `password` = env `DASH_PASSWORD`. Tokens are stored hashed in `data/dash-sessions.json` (survive restarts); `GET /logout` revokes the token; changing `DASH_PASSWORD` revokes all. 5 failed logins / 15 min per IP (30 overall) → `429`. |
-| AI studio / scripts | Header `x-api-token: <API_TOKEN>` — only `/api/state` + `/api/publish`. |
 
 Wrong/missing auth → `401`. The SPA redirects to `/login` on 401.
 
@@ -77,12 +76,14 @@ Times/dates accepted in academy-local tz unless ISO.
 | `/api/dash/question/remove` | `{id}` | delete question |
 | `/api/dash/question/send` | `{id}` | post question now to announcements (🇦–🇪 buttons) |
 
-### Settings & token API
+### Settings & system
 | Path | Effect |
 |---|---|
-| `POST /api/dash/settings` | whitelist only: `tz, xp_attendance, xp_completion, nudge_hour, nudge_over_dm, nudge_cooldown_hours, recap_day, recap_hour, reminder_minutes_before, missed_after_minutes, level_roles` |
-| `GET /api/state` (token) | full academy state for the AI studio |
-| `POST /api/publish` (token) | apply plan diff (`base_revision` → 409 on conflict), optional announce |
+| `POST /api/dash/settings` | whitelist only: `tz, nudge_hour, nudge_over_dm, nudge_cooldown_hours, recap_day, recap_hour, reminder_minutes_before, missed_after_minutes, backup_hour, cache_max_mb` |
+| `GET /api/dash/system` | status for the «النظام» panel |
+| `POST /api/dash/system/cookies` | raw `cookies.txt` → `data/cookies.txt` (validated) |
+| `POST /api/dash/system/restore` | raw SQLite file → validated live DB swap (409 while live) |
+| `GET /api/dash/system/backup` | download a fresh DB snapshot |
 
 ## SPA structure (`public/app.js`, hash router)
 

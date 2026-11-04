@@ -1,20 +1,16 @@
 # 2 — Architecture (how the code is wired)
 
-Node ≥ 22.5, ESM everywhere (`"type": "module"`), except the videobot sidecar (`.cjs`).
-Core principle: **`src/core/academy.js` holds ALL domain logic as pure SQLite functions with zero
-Discord imports** — the Coach bot, the web API, and tests all build on it. Discord is a surface,
-not a layer.
+Node ≥ 22.5, ESM everywhere (`"type": "module"`). Core principle: **`src/core/academy.js` holds ALL
+domain logic as pure SQLite functions with zero Discord imports** — the bot, the web API and the tests
+all build on it. Discord is a surface, not a layer.
 
 ```
+scripts/start.js    ── production entry: ensures yt-dlp / ffmpeg / Chrome / emoji font, then imports ↓
 src/coach/index.js  ── boots everything (client, engines, web)
-   │
    ├─ src/core/*          domain logic (no Discord)
-   ├─ src/coach/*         Discord surfaces + Express + child processes
-   └─ src/videobot/*      experimental video-screenshare sidecar (.cjs, separate process)
-
-public/                   the dashboard SPA (static, served by src/coach/web.js)
-src/ai-admin/*            optional local Ollama planner (talks to Coach HTTP API)
-scripts/                  tests + small utilities
+   └─ src/coach/*         Discord surfaces + Express + child processes
+public/                   the owner dashboard SPA (static, served by src/coach/web.js)
+scripts/                  start.js, tests, small utilities
 ```
 
 ---
@@ -25,116 +21,94 @@ scripts/                  tests + small utilities
 
 | File | Purpose | Key exports |
 |---|---|---|
-| `config.js` | Env parsing + `validateCoachConfig` (required: COACH_TOKEN, GUILD_ID, DASH_PASSWORD, API_TOKEN unless dry-run) | `config`, `validateCoachConfig` |
-| `db.js` | SQLite schema + v1→v10 migrations + settings defaults. Opens WAL, `DB_PATH` (default `./data/academy.db`). **Singleton — first import with env vars set decides the DB.** | `getDb`, `getSetting`, `setSetting`, `allSettings`, `getLevels`, `getTemplate` |
-| `academy.js` (778 lns) | The whole engine: courses, lessons, schedule generation, sessions, attendance, XP/streaks, quests, books, groups, subs, quiz, member rename/remove, `overview()` | ~70 exported functions — see `3-DATABASE.md` per table |
+| `config.js` | Env parsing + `validateCoachConfig` (required: COACH_TOKEN, GUILD_ID, DASH_PASSWORD unless dry-run). `tz` = `ACADEMY_TZ` › `TZ`; `port` = `SERVER_PORT` › `PORT`. | `config`, `validateCoachConfig` |
+| `db.js` | SQLite schema + migrations + settings defaults. Opens WAL at `DB_PATH` (default `./data/academy.db`). **Singleton — first `getDb()` decides the DB.** `closeDb()` lets a restore swap the file live. | `getDb`, `closeDb`, `getSetting`, `setSetting`, `allSettings`, `getTemplate` |
+| `academy.js` | The whole engine: courses, lessons, schedule generation, sessions, attendance, streaks, quests, books, groups, subs, quiz, member rename/remove, `memberEngagement()`, `overview()` | ~70 exported functions — see `3-DATABASE.md` |
 | `time.js` | DST-safe timezone math. **All DB timestamps are UTC ISO; cadences live in local tz.** | `zonedToUtc`, `normalizeTemplate`, `nextSlots`, `fmtInTz`, `humanDuration` (Arabic) |
-| `templates.js` | ALL coach message strings, Arabic, with `{{placeholders}}`. Edit wording here. | `templates` object |
+| `templates.js` | All announcement/DM strings, Arabic, with `{{placeholders}}`. Edit wording here. | `templates` |
 
 ### src/coach — the bot
 
 | File | Purpose | Key exports |
 |---|---|---|
-| `index.js` | Entrypoint. Registers slash commands, wires every event handler, starts timers + web. **Never import this from scripts/tests — importing it boots the whole bot.** | — |
-| `bus.js` | Discord-vs-dry-run messaging abstraction: `postTo(settingKey, payload)`, `dm(userId, …)`, `bossDm(…)` | `createBus(client)` |
-| `commands.js` (568 lns) | Slash-command defs + the single dispatch for every button/modal/select/context-menu interaction. `customId.split(':')` → `[kind, action, idStr, slotIso]` | `commandDefs`, `handleCommand`, `handleButton`, `handleModal`, `handleSelect`, `handleContextMenu`, `isAdmin` |
-| `sessions.js` (235 lns) | Session state machine run by the 20 s tick. | `tick`, `startSessionNow`, `finishSession`, `proposeSlot` |
-| `streamer.js` (247 lns) | Voice presence: joins VC, plays lesson audio via yt-dlp→ffmpeg pipe or cache. Every control op = kill + respawn ffmpeg at position X. | `startStream`, `stopStream`, `prefetch`, `controlPlayer`, `playerState`, `isStreaming` |
-| `lavalink.js` | **Optional** Lavalink audio backend (poru client, the approach of github.com/faisaljs/Groove-Music). Only active with `AUDIO_BACKEND=lavalink` + `LAVALINK_HOST`; `streamer.js` tries it first and falls back to ffmpeg on any failure, including mid-class. | `initLavalink`, `lavalinkPlay`, `lavalinkUpdate`, `lavalinkStop`, `onLavalinkFailure` |
-| `ytdlp.js` | `cookieArgs()` → `['--cookies','data/cookies.txt']` if the file exists. **Every yt-dlp spawn must spread this.** Also the binary paths: `YTDLP` (`$YTDLP_PATH` → `tools/yt-dlp(.exe)` → PATH) and `FFMPEG` (`$FFMPEG_PATH` → PATH) — spawn these, never a literal `'ffmpeg'`. | `cookieArgs`, `YTDLP`, `FFMPEG` |
-| `importer.js` | yt-dlp metadata reads: playlist → lesson list, single video → real duration | `fetchPlaylist`, `fetchVideoMeta` |
-| `checkins.js` | 60 s engine loop: daily nudges (18:00), weekly recap (Sun 21:00), health tick (9:00) | `startEngines` |
-| `health.js` | Throttled error DMs to boss + daily heartbeat digest | `initHealth`, `reportError`, `healthTick` |
-| `acadashboard.js` | Hub channel «📊-لوحة-الأكاديمية»: creates it, live stats card (10-min throttle), «الحصة» VC, one-time hub ordering | `refreshAcademyDashboard`, `ensureVoiceChannel`, `ensureHubOrder`, `removeLegacyDashboard` |
-| `coursereg.js` | Course join cards in the hub + `csub/cunsub` handling + course roles + «متعلم» learner role (granted on every interaction) | `syncCourseCards`, `handleSubscribe`, `grantLearnerRole`, `ensureLearnerRole`, `learnerPing` |
-| `memberdash.js` (481 lns) | Per-member private channels + 5-tab image-card dashboard, dirty-set refresh sweep (1/min), pinned onboarding card | `refreshMemberDashboards`, `markMemberDirty`, `markAllMembersDirty`, `postOnboarding`, `buildMemberView` |
-| `library.js` | «📚-المكتبة»: one rendered card per book, boot-time self-healing sync | `publishBook`, `unpublishBook`, `syncLibrary` |
-| `uploads.js` | «📥-رفع-الكتب»: mods drop PDFs → completion panel button → shared publish pipeline (needs Message Content intent) | `onUploadMessage`, `ensureUploadChannel`, `postUploadInstructions`, `publishFromMessage` |
-| `pdflib.js` | PDF storage as genre-tagged threads in the pre-existing forum «📚〡المكتبة・الشرعية»; fresh re-fetch on download | `postBookPdf`, `fetchBookPdf`, `deletePdfThread`, `findForum` |
-| `card.js` (237 lns) | HTML→JPEG card renderer (puppeteer-core + system Edge/Chromium). Serial queue, page reuse, Tajawal inlined, logo as data-URI. Returns `null` on failure → callers fall back to text embeds. | `renderCard`, `warmCardRenderer`, `memberCardHTML`, `bookCardHTML`, `onboardingCardHTML`, `listCardHTML`, `academyCardHTML` |
-| `web.js` (529 lns) | Express: SPA + `/api/dash/*` (cookie) + `/api/state`,`/api/publish` (token) + login. Full route table in `5-WEB-DASHBOARD-API.md`. | `startWeb` |
-| `publish.js` | Applies an AI-studio plan diff with optimistic concurrency (`revision` setting) | `applyPublish`, `currentRevision` |
-| `dashboard.js` | **Stub** (old text dashboard retired). No-op `refreshDashboard`/`markDashboardDirty` kept so imports don't break. | — |
-| `gamification.js` | **Stub** — XP ranks/announcements removed by owner decision. | — |
-| `fonts.css` | Tajawal font-face CSS (107 KB, inlined into every card render — zero network) | — |
-
-### src/ai-admin — optional local planner (PC only)
-
-| File | Purpose |
-|---|---|
-| `index.js` | Studio + optional boss-only Discord chat. Pulls state from Coach `GET /api/state`. |
-| `ollama.js` | Thin client for local Ollama `/api/chat` (tool-calling). |
-| `planner.js` | Draft model: local mutable draft + LLM tools (add/remove/move lesson, set template, …) + `publish()` → `POST /api/publish`. Flat lesson list — predates multi-course; course-aware edits belong in the SPA. |
-| `studio.js` | Single-file localhost chat UI on 8421. |
+| `index.js` | Entrypoint. Registers slash commands, wires every event handler, starts timers + web. **Never import from tests.** | — |
+| `commands.js` | Re-export barrel for `interactions/`. | `commandDefs`, `handleCommand`, `handleButton`, `handleModal`, `handleSelect`, `handleContextMenu`, `isAdmin` |
+| `interactions/defs.js` | Slash-command + context-menu definitions (Arabic descriptions). | `commandDefs` |
+| `interactions/slash.js` | `/lesson` `/schedule` `/setup` `/myprogress` `/quest` `/books` `/group` `/pdf` `/optout`. | `handleCommand` |
+| `interactions/buttons.js` | Every button. `customId.split(':')` → `[kind, action, idStr, slotIso]`. | `handleButton` |
+| `interactions/forms.js` | Modals, select menus, the «📚 نشر في المكتبة» context menu. | `handleModal`, `handleSelect`, `handleContextMenu` |
+| `interactions/shared.js` | Embed shorthand, Arabic day/status labels, `isAdmin`, the PDF publish modal. | `e`, `statusAr`, `isAdmin`, `openUploadModal` … |
+| `bus.js` | Discord-vs-dry-run messaging: `postTo(settingKey, payload)`, `dm(userId, …)`, `bossDm(…)`. | `createBus(client)` |
+| `sessions.js` | Session state machine run by the 20 s tick; records everyone already in the room at start; resumes audio after a restart mid-class; DMs the owner when a live class is silent 2.5 min; posts each attendee's «حضرت الحصة» card on finish. | `tick`, `startSessionNow`, `finishSession`, `proposeSlot` |
+| `streamer.js` | Voice presence: joins VC, plays lesson audio via yt-dlp→ffmpeg pipe or cache. Every control op = kill + respawn ffmpeg at position X. Optional Lavalink first when `AUDIO_BACKEND=lavalink`. | `startStream`, `stopStream`, `prefetch`, `controlPlayer`, `playerState`, `isStreaming` |
+| `lavalink.js` | **Optional, off** Lavalink backend (poru). Falls back to ffmpeg on any failure. See docs/7 before enabling. | `initLavalink`, `lavalinkPlay`, … |
+| `ytdlp.js` | Binary paths + `cookieArgs()`. **Spawn `YTDLP`/`FFMPEG` from here; spread `cookieArgs()` in every yt-dlp call.** | `YTDLP`, `FFMPEG`, `cookieArgs` |
+| `importer.js` | yt-dlp metadata reads: playlist → lesson list, single video → real duration. | `fetchPlaylist`, `fetchVideoMeta` |
+| `checkins.js` | 60 s engine loop: nudges, weekly recap, health digest, daily backup, hourly cache trim. | `startEngines` |
+| `health.js` | Throttled error DMs to the owner + daily heartbeat digest. | `initHealth`, `reportError`, `healthTick` |
+| `maintenance.js` | Daily `VACUUM INTO` backups (7 kept, DM'd as .db.gz), validated live DB restore, cookies.txt validation, audio-cache budget (`cache_max_mb`), dashboard status. | `backupTick`, `makeBackup`, `restoreDatabase`, `saveCookies`, `pruneAudioCache`, `systemStatus` |
+| `acadashboard.js` | Hub channel «📊-لوحة-الأكاديمية»: stats card (10-min throttle, shows next class), «الحصة» VC, hub ordering. | `refreshAcademyDashboard`, `ensureVoiceChannel`, `ensureHubOrder`, `ensureDashboardChannel` |
+| `coursereg.js` | Course join cards + `csub/cunsub` + course roles + «متعلم» learner role. | `syncCourseCards`, `handleSubscribe`, `grantLearnerRole`, `ensureLearnerRole` |
+| `memberdash.js` | Per-member private channels + 5-tab image-card board, dirty-set sweep (1/min), onboarding card, post-class summary card. | `refreshMemberDashboards`, `markMemberDirty`, `markAllMembersDirty`, `postOnboarding`, `postClassSummary`, `memberDashPayload` |
+| `library.js` / `uploads.js` / `pdflib.js` | Book cards channel, mods' PDF drop zone, PDF storage in the pre-existing forum. | `syncLibrary`, `publishFromMessage`, `fetchBookPdf` … |
+| `card.js` | HTML→JPEG renderer (puppeteer-core). Serial queue, one reused page, Tajawal inlined, boot warm-up. Returns `null` on failure → text fallback. | `renderCard`, `warmCardRenderer`, `memberCardHTML`, `classDoneCardHTML`, `academyCardHTML`, … |
+| `web.js` | Express: SPA + `/api/dash/*` (cookie sessions) + login. Route table in `5-WEB-DASHBOARD-API.md`. | `startWeb` |
+| `fonts.css` | Tajawal font-face CSS inlined into every card render. | — |
 
 ### Other directories
 
 | Path | What |
 |---|---|
-| `public/` | Dashboard SPA: `index.html`, `app.js` (848 lns, hash-router), `app.css`, `logo*.png` (the هُدَى emblem), `shot-user.png`. |
-| `scripts/start.js` | Production entry for container hosts (`npm start`): fetches Linux `tools/yt-dlp` + static `tools/ffmpeg` when missing, then imports `src/coach/index.js` in-process. The one script that is *meant* to boot the bot. |
-| `scripts/test-academy.js` | The test suite (`npm test`) — 328 lines, no Discord needed. |
-| `scripts/list-guilds.js` | Helper: prints guild ids for `.env`. |
-| `scripts/setup-server.js` | **Legacy & broken** (imports a removed export) — do not use. |
-| `src/videobot/` | Experimental video screenshare sidecar: `videobot.cjs` (control API on 8422, yt-dlp → ffmpeg H264 → RTP) + `VideoVoiceConnection.cjs` (1477-ln vendored dysnomia fork adding video SSRC / op-12 publish / DAVE video encryption). Dormant: only `/stop` is called. |
-| `deploy/` | Oracle Cloud runbook (abandoned — needs a credit card), Windows scheduled-task files for the PC fallback. |
-| `phone-setup/` | Tablet (Termux) bootstrap + deploy watcher scripts + adb tools + git bundle. Gitignored. |
-| `data/` | `academy.db` (SQLite, WAL), `cache/lesson-<id>.opus` audio cache, `cookies.txt` (yt-dlp cookies). Gitignored. |
-| `tools/` | `yt-dlp.exe` (Windows dev). Linux/tablet uses PATH yt-dlp; override with `YTDLP_PATH`. |
+| `public/` | Dashboard SPA: `index.html`, `app.js` (hash-router), `app.css`, logos. |
+| `scripts/start.js` | Production entry (`npm start`). |
+| `scripts/test-academy.js` | The test suite (`npm test`), no Discord needed. |
+| `scripts/list-guilds.js` | Prints guild ids for `.env`. |
+| `scripts/cdp-cookies.mjs` | Exports YouTube cookies from a running Edge (CDP port 9223) into Netscape `cookies.txt`. |
+| `deploy/` | Where it runs (README), Windows fallback task, optional Lavalink config. |
+| `data/` | `academy.db`, `cache/lesson-<id>.opus`, `backups/`, `cookies.txt`, `dash-sessions.json`. Gitignored. |
+| `tools/` | `yt-dlp.exe` (Windows dev). On Linux, `start.js` downloads `yt-dlp`, `chrome/` here (gitignored). |
 
 ---
 
-## Boot sequence (`src/coach/index.js`)
+## Boot sequence
 
-1. `validateCoachConfig` → exit if required env missing.
-2. `getDb()` — creates/migrates schema, seeds default settings, creates the first course if none.
-3. Build Discord client (intents: Guilds, VoiceStates, Members; + MessageContent only when `COACH_MSG_INTENT=1`).
-4. `startWeb()` — Express on `PORT` (8420) immediately (dashboard works even while Discord connects).
-5. `client.login()` → on **ready**: register guild slash commands → `ensureLevelRoles` (stub) → health init (`bossDm`) → `postOnboarding` (pinned guide) → `warmCardRenderer` → `ensureVoiceChannel` («الحصة») → `ensureLearnerRole` → `removeLegacyDashboard` → `ensureHubOrder` (one-time) → `refreshAcademyDashboard` (stats card) → `syncCourseCards` → `syncLibrary` → `ensureUploadChannel` + `postUploadInstructions` → `markAllMembersDirty` + `refreshMemberDashboards` (backfill private channels).
-6. Event handlers: `interactionCreate` (dispatch + `grantLearnerRole` on EVERY interaction), `messageCreate` (PDF drop detect), `voiceStateUpdate` (attendance + welcome DM + first-timer private channel).
-7. Timers start: initial catch-up `tick()` then every **20 s**; `startEngines` loop every **60 s**.
-8. Crash-proofing: `uncaughtException`/`unhandledRejection` are logged + reported to boss, process keeps running.
+1. `scripts/start.js` (production): yt-dlp (download / 3-day self-update), ffmpeg (PATH or static build), chrome-headless-shell, Noto emoji font → then imports `index.js`.
+2. `validateCoachConfig` → exit if required env missing. `getDb()` — creates/migrates schema.
+3. Discord client (intents: Guilds, VoiceStates, Members; + MessageContent when `COACH_MSG_INTENT=1`).
+4. `startWeb()` — Express on `SERVER_PORT`/`PORT` immediately.
+5. `client.login()` → on **clientReady**: register guild slash commands → optional Lavalink init → health init → onboarding card → card warm-up → «الحصة» VC → learner role → hub order + stats card → course cards → library → upload channel → member dashboards backfill.
+6. Event handlers: `interactionCreate` (dispatch + `grantLearnerRole`), `messageCreate` (PDF drop), `voiceStateUpdate` (attendance + first-timer welcome DM + private channel).
+7. Timers: catch-up `tick()` then every **20 s**; `startEngines` every **60 s**.
+8. Crash-proofing: `uncaughtException`/`unhandledRejection` are logged + reported to the owner; process keeps running.
 
-## Timers inside the Coach
+## Timers
 
 | Timer | Interval | What it drives |
 |---|---|---|
-| Session tick | 20 s (`sessions.tick`) | The whole session state machine + member-dashboard dirty sweep (inner 60 s throttle) |
-| Engines | 60 s (`checkins.startEngines`) | Nudges at `nudge_hour` (once/day, `nudge_last_run` guard), recap at `recap_day`/`recap_hour`, health digest at `health_hour` |
-| Hub stats card | on events, throttled 10 min | `refreshAcademyDashboard` |
-| SPA (client-side) | 15 s `/api/dash/data`; 3 s `/api/dash/player` while live | Page refresh (skips while user is typing in a form) |
+| Session tick | 20 s | State machine, silent-class watch, member-dashboard sweep (60 s throttle), hub card (10-min throttle) |
+| Engines | 60 s | Nudges (`nudge_hour`), recap (`recap_day`/`recap_hour`), health digest (`health_hour`), backup (`backup_hour`, default 4), cache trim (hourly at :30) |
+| SPA (client) | 15 s data; 3 s player while live | Page refresh (skips while typing) |
 
 ## Session lifecycle (the 20 s tick)
 
 ```
 scheduled ──T-30m──> reminded ──T0──> live ──attendees & T+duration──> done
-                        │                 │
-                 prefetch audio      0 attendees at T+15min
-                 + reminder post          │
-                                          v
-                                    missed_poll (buttons: move/slots/skip)
-                                          │ no answer within 24 h
-                                          v
-                                    session moved to proposed slot
+                        │              │  │
+                 prefetch audio        │  └─ 0 attendees at T+15 min ──> missed_poll ── 24 h ──> moved
+                 + reminder post       └─ bot was offline past T+duration ──> missed_poll (no late "starting")
 ```
 
-- **T0 start**: single-live-class guard (never two live classes) → post `starting` (ping = course role → subscriber mentions → `ping_role`) → `startStream` joins «الحصة» and plays from `offset_min`.
-- **finish**: stop stream → `finalizeSession` (close attendance rows, session `done`; lesson `done` when no sessions remain) → post `session_done` → post every lesson quiz question → pay attendance XP + streak bonus → refresh cards.
-- All state lives in the `sessions` table (`status`, `live_post_id`, `proposed_at`, `poll_at`, `offset_min`).
+- **T0 start**: one-live-class guard → `starting` post → everyone already in «الحصة» recorded → `startStream` from `offset_min`.
+- **live**: if nothing plays (restart mid-class), `resumeIfSilent` rejoins at the right second (retry every 2 min); silent 2.5 min → one owner DM.
+- **finish**: stop stream → `finalizeSession` → `session_done` post + quiz questions → per-attendee streak/attendance + «حضرت الحصة» card in their channel.
 
 ## Audio pipeline (`streamer.js`)
 
-- Cache file: `data/cache/lesson-<id>.opus` (yt-dlp bestaudio → ffmpeg libopus 96 k 48 kHz stereo).
-- Cached playback: `ffmpeg -re -ss <pos> -i cache [-c:a copy | -af volume=V]` (copy only at volume 1 — no opus encoder module, so **never** `inlineVolume`).
-- Uncached: yt-dlp pipe (`--download-sections *{pos}-inf` when resuming); part 2+ without cache first *warms* (full prefetch, up to 150 s) because the live-section pipe is slow/unreliable.
-- `connection.subscribe(player)` is **mandatory** — without it Discord hears silence.
-- Optional `AUDIO_BACKEND=lavalink`: `startStream` first asks `lavalink.js` to play (position + `endTime` = part boundary in one PATCH; pause/seek/volume are PATCHes, no respawn). Any refusal → the ffmpeg path above. A node disconnect or track error mid-class → `onLavalinkFailure` rejoins via `@discordjs/voice` and continues from the same second. `playerState()` reports `backend`.
-- Player controls = respawn ffmpeg at the target second. Position = baseSec + wall-clock elapsed.
+- Cache: `data/cache/lesson-<id>.opus` (yt-dlp bestaudio → ffmpeg libopus 96 k 48 kHz). Trimmed to `cache_max_mb`, never a lesson scheduled within 14 days.
+- Cached playback: `ffmpeg -re -ss <pos> -i cache [-c:a copy | -af volume=V]` (copy only at volume 1 — **never** `inlineVolume`).
+- Uncached: yt-dlp pipe; part 2+ without cache first warms (full prefetch, ≤150 s).
+- `connection.subscribe(player)` is **mandatory**.
 
 ## Card pipeline (`card.js`)
 
-HTML template (width 860, `id="card"` element, RTL, Tajawal from inlined `fonts.css`, logo base64) → `page.setContent` (networkidle0, 15 s) → screenshot element → **JPEG q88, DPR 1.5** → sent as attachment. Renders are **serialized through a queue** (the tablet's chromium can't parallelize) and reuse one page. Any failure → `null` → caller falls back to a plain text embed. Browser candidates: `$BROWSER_PATH` → Edge → Chrome → chromium/chromium-browser/google-chrome.
-
-## Publish flow (AI studio)
-
-`studio chat` → planner mutates local draft via LLM tool calls → `publish()` → `POST /api/publish` (x-api-token, `base_revision` for optimistic concurrency → 409 on stale) → `applyPublish` writes template/lessons/sessions/quests → optional announce posted to Discord.
+HTML (width 860, `#card`, RTL, inlined Tajawal + logo) → `setContent` (waitUntil `load` + `document.fonts.ready`, `CARD_TIMEOUT_MS` default 60 s) → element screenshot → **JPEG q88, DPR 1.5**. Serialized queue, one reused page, warm-up render at boot. Browser: `$BROWSER_PATH` → Edge → Chrome → chromium; on container hosts `start.js` provides chrome-headless-shell (`headless: 'shell'`).

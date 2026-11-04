@@ -13,7 +13,6 @@ Everything a custom dashboard needs. Base URL: `http://localhost:8420`
 | Who | How |
 |---|---|
 | Browser (your dashboard) | Cookie `dash` — obtained by `POST /login` with `{ "password": "<DASH_PASSWORD from .env>" }` |
-| AI studio / scripts | Header `x-api-token: <API_TOKEN from .env>` (only for `/api/state` + `/api/publish`) |
 
 All `/api/dash/*` endpoints need the cookie. Wrong/missing cookie → `401`.
 
@@ -179,12 +178,14 @@ missed_after_minutes, level_roles`
 
 ---
 
-## Token API (for the AI studio / scripts) — خارج اللوحة
+## System — النظام (cookie auth)
 
-| Endpoint | Auth | Purpose |
+| Endpoint | Body | Purpose |
 |---|---|---|
-| `GET /api/state` | `x-api-token` | full state for planning |
-| `POST /api/publish` | `x-api-token` | apply a plan diff (lessons/template/generate/quests), optional `announce` posted to Discord |
+| `GET /api/dash/system` | — | cookies age, last backup, db/cache size, card renderer, last audio problem, uptime, memory |
+| `POST /api/dash/system/cookies` | raw text (≤2 MB) | save a Netscape `cookies.txt` (must contain youtube.com lines) |
+| `POST /api/dash/system/restore` | raw SQLite file (≤80 MB) | validate + swap the academy DB live (409 during a live class; previous DB kept in `data/backups/`) |
+| `GET /api/dash/system/backup` | — | download a fresh `VACUUM INTO` snapshot |
 
 ## Building your dashboard — خطوات البناء
 

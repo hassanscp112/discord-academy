@@ -415,7 +415,7 @@ export function startWeb({ client = null, bus }) {
     A.endQuest(+(req.body?.id));
     ok(res, 'أُزيل من قائمة الإنجاز ✓');
   });
-  const ALLOWED_SETTINGS = ['tz', 'xp_attendance', 'xp_completion', 'nudge_hour', 'nudge_over_dm', 'nudge_cooldown_hours', 'recap_day', 'recap_hour', 'reminder_minutes_before', 'missed_after_minutes', 'level_roles'];
+  const ALLOWED_SETTINGS = ['tz', 'nudge_hour', 'nudge_over_dm', 'nudge_cooldown_hours', 'recap_day', 'recap_hour', 'reminder_minutes_before', 'missed_after_minutes', 'backup_hour', 'cache_max_mb'];
   app.post('/api/dash/settings', dashAuth, (req, res) => {
     for (const [k, v] of Object.entries(req.body ?? {})) if (ALLOWED_SETTINGS.includes(k) && v !== '') setSetting(k, v);
     ok(res, 'حُفظت الإعدادات ✓');

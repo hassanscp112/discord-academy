@@ -31,7 +31,7 @@ mostly from desktop, sometimes phone. Language: **Arabic, RTL**.
   Empty states must guide the next action, not just say "no data".
 - Constraints: no build step (static files served by the Coach's Express from
   `public/`), cookie auth, JSON API at `/api/dash/*` (see DASHBOARD_API.md).
-  Must deploy unchanged to an Oracle VM.
+  Deploys unchanged to the bot-hosting.net container.
 
 ## Visual world (pinned by owner, 2026-10-05)
 
@@ -41,4 +41,4 @@ Distinctly not the generic blue-purple AI look.
 
 ## Out of scope
 
-Member-facing UI (lives in Discord), the AI studio (separate localhost app).
+Member-facing UI (lives in Discord).

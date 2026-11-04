@@ -32,7 +32,7 @@ looking up a text channel by name, filter `GuildText` (not forums/announcements 
 
 Class-start ping order: course role → individual subscriber mentions → `ping_role` → `@here`.
 New-course and new-group announcements ping `متعلم` (`learnerPing()`).
-Level roles were **removed** — `gamification.js` is a stub; do not re-add.
+Level roles were **removed** (and the `gamification.js` stub deleted) — do not re-add.
 
 ## Slash commands (guild-registered at boot; default perm = ManageGuild unless noted)
 
@@ -60,7 +60,7 @@ lands in `action`, NOT `idStr`** (this is a recurring bug source — see `7-GOTC
 | `sess:finish:<id>` | finish now | boss finishes live session (XP + quiz) | `sessions.js` |
 | `sess:move:<id>` | accept proposed slot | move missed session | `sessions.js` |
 | `sess:slots:<id>` | pick a time | boss-only ephemeral 3-option picker | `sessions.js` |
-| `sess:set:<id>:<ISO>` | (ephemeral) | set exact time | `commands.js` |
+| `sess:set:<id>:<ISO>` | (ephemeral) | set exact time | `interactions/buttons.js` |
 | `sess:skip:<id>` | skip | cancel session, stop stream | `sessions.js` |
 | `quiz:<qid>:<optIdx>` | option text | one answer per member; correct → XP | `sessions.js`, `web.js` |
 | `csub:<courseId>` / `cunsub:<courseId>` | «🔔 الاشتراك / 🔕 إلغاء» | course sub + role toggle | `coursereg.js` |

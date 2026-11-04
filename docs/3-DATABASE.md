@@ -112,7 +112,7 @@ Migrations are additive `ALTER TABLE … ADD COLUMN` wrapped in `try{}catch{}` (
 ### Internal state (do not hand-edit casually)
 | Key | Meaning |
 |---|---|
-| `revision` | Optimistic-concurrency counter for `/api/publish` |
+| `revision` | Legacy counter from the removed AI-studio publish API (unused) |
 | `weekly_template_json` | Legacy global cadence (v4 migration source; `/schedule template` + `/api/dash/template` still write it, syncing the FIRST course) |
 | `nudge_last_run`, `recap_last_run`, `health_last_run` | Date guards so each daily/weekly job runs once |
 
@@ -136,4 +136,4 @@ Migrations are additive `ALTER TABLE … ADD COLUMN` wrapped in `try{}catch{}` (
 - Attendance: `recordJoin`, `recordLeave`, `sessionAttendance`, `finalizeSession`.
 - Books/groups: `addBook`, `removeBook`, `setBookProgress`, `bookShelf`, `bookStats`, `setBookPdf`, `createGroup`, `joinGroup`/`leaveGroup`, `groupRoster`.
 - Subs/quiz: `toggleCourseSub`, `courseSubscribers`, `subscribedCourses`, `addQuestion`, `listQuestions`, `answerQuestion`.
-- Aggregates: `overview()` (dashboard/studio), `weeklyRecap`, `membersToNudge`.
+- Aggregates: `overview()` (dashboard + hub card), `memberEngagement()` (members page), `weeklyRecap`, `membersToNudge`.
