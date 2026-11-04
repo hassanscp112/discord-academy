@@ -7,7 +7,8 @@ export const config = {
   aiToken: env('AI_TOKEN'),
   guildId: env('GUILD_ID'),
   bossIds: env('BOSS_IDS').split(',').map(s => s.trim()).filter(Boolean),
-  tz: env('TZ', 'UTC'),
+  // ACADEMY_TZ wins: container hosts force TZ to the node's own zone (bot-hosting.net → Europe/Helsinki)
+  tz: env('ACADEMY_TZ') || env('TZ', 'UTC'),
   dbPath: env('DB_PATH', './data/academy.db'),
   // container hosts (bot-hosting.net / Pterodactyl) hand out the port as SERVER_PORT
   port: Number(env('SERVER_PORT') || env('PORT', '8420')),

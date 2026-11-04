@@ -87,6 +87,7 @@ whether the start command may write to `tools/` (it should — it's the app dir)
 | `COACH_DISABLE_DISCORD` | – | any value = dry-run (web + engines, no Discord) |
 | `COACH_MSG_INTENT` | – | `1` = join MessageContent intent for PDF drop auto-detect (must ALSO be enabled in the Discord dev portal) |
 | `BROWSER_PATH` | – | explicit chromium path for cards (auto-detects Edge/Chrome/Chromium) |
+| `ACADEMY_TZ` | – | academy timezone that wins over `TZ` — **required on bot-hosting.net**, which forces `TZ=Europe/Helsinki` (Makkah = `Asia/Riyadh`) |
 | `SERVER_PORT` | – | port handed out by container hosts (bot-hosting.net); wins over `PORT` |
 | `TRUST_PROXY` | – | `1` = behind the host's HTTPS proxy: login rate-limit uses the real client IP from `X-Forwarded-For` |
 | `YTDLP_PATH` | – | default `tools/yt-dlp.exe` on Windows, else `tools/yt-dlp` (downloaded by `scripts/start.js`), else `yt-dlp` on PATH |
