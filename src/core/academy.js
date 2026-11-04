@@ -288,6 +288,38 @@ export function listParticipants() {
   return getDb().prepare('SELECT * FROM participants ORDER BY display_name').all();
 }
 
+// Attendance pattern over the last `recentN` classes that were actually held (status done):
+// userId -> { recent: [bool newest-first], attendedRecent, lastAt, total, status }
+//   regular  — at ≥ 3 of the last 4 (or all, when fewer were held)
+//   slipping — came to some of the last 4, but fewer than that
+//   inactive — attended before, none of the last 4
+//   never    — interacted but never attended a class
+export function memberEngagement({ recentN = 4 } = {}) {
+  const db = getDb();
+  const heldIds = db.prepare("SELECT id FROM sessions WHERE status = 'done' ORDER BY scheduled_at DESC LIMIT ?")
+    .all(recentN).map(s => s.id);
+  const byUser = new Map();
+  for (const r of db.prepare('SELECT user_id, session_id, joined_at FROM attendance').all()) {
+    if (!byUser.has(r.user_id)) byUser.set(r.user_id, []);
+    byUser.get(r.user_id).push(r);
+  }
+  const regularAt = Math.min(3, heldIds.length);
+  const out = {};
+  for (const p of listParticipants()) {
+    const mine = byUser.get(p.user_id) ?? [];
+    const went = new Set(mine.map(r => r.session_id));
+    const recent = heldIds.map(id => went.has(id));
+    const attendedRecent = recent.filter(Boolean).length;
+    const lastAt = mine.reduce((m, r) => (!m || r.joined_at > m ? r.joined_at : m), null);
+    const status = !mine.length ? 'never'
+      : !heldIds.length || attendedRecent >= regularAt ? 'regular' // none finished yet = first class running
+      : attendedRecent > 0 ? 'slipping'
+      : 'inactive';
+    out[p.user_id] = { recent, attendedRecent, lastAt, total: mine.length, status };
+  }
+  return out;
+}
+
 export function optOut(userId, disabled) {
   getDb().prepare('UPDATE participants SET dms_enabled = ? WHERE user_id = ?').run(disabled ? 0 : 1, userId);
   return !disabled;

@@ -340,6 +340,33 @@ console.log('\n— publish API —');
   eq(pubQ.category, 'course', 'published quest carries its category');
 }
 
+console.log('\n— member engagement (dashboard) —');
+{
+  const db = getDb();
+  const lesson = A.listLessons()[0];
+  const held = [];
+  for (let k = 0; k < 4; k++) {
+    held.push(Number(db.prepare("INSERT INTO sessions (lesson_id, scheduled_at, status) VALUES (?, ?, 'done')")
+      .run(lesson.id, new Date(Date.now() - (40 - k) * 86400000 + 365 * 86400000).toISOString()).lastInsertRowid));
+  }
+  // held[3] is the newest; regular = all 4, slipping = only the 2 oldest, inactive = an older class only
+  const old = Number(db.prepare("INSERT INTO sessions (lesson_id, scheduled_at, status) VALUES (?, ?, 'done')")
+    .run(lesson.id, new Date(Date.now() - 400 * 86400000).toISOString()).lastInsertRowid);
+  for (const [u, ids] of [['eng_reg', held], ['eng_slip', held.slice(0, 2)], ['eng_gone', [old]], ['eng_new', []]]) {
+    A.upsertParticipant(u, u);
+    for (const id of ids) A.recordJoin(id, u);
+  }
+  const e = A.memberEngagement();
+  eq(e.eng_reg.status, 'regular', 'attended the last 4 → regular');
+  eq(e.eng_reg.recent, [true, true, true, true], 'recent pattern newest-first');
+  eq(e.eng_slip.status, 'slipping', 'attended 2 of the last 4 → slipping');
+  eq(e.eng_slip.recent, [false, false, true, true], 'slipping: missed the 2 newest');
+  eq(e.eng_gone.status, 'inactive', 'only an older class → inactive');
+  eq(e.eng_new.status, 'never', 'never attended → never');
+  for (const u of ['eng_reg', 'eng_slip', 'eng_gone', 'eng_new']) A.removeMember(u);
+  for (const id of [...held, old]) db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+}
+
 console.log('\n— maintenance: cookies, backup/restore, cache budget —');
 {
   const M = await import('../src/coach/maintenance.js');

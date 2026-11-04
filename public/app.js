@@ -1,6 +1,6 @@
 /* لوحة الأكاديمية — SPA · هُدَى (navy & gold) */
 const $ = s => document.querySelector(s);
-const state = { data: null, page: 'overview', memberFilter: '', editing: null, cd: null, pp: null, poll: null };
+const state = { data: null, page: 'overview', memberFilter: '', memberSeg: 'all', editing: null, cd: null, pp: null, poll: null };
 
 const ESC_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ESC_MAP[c]);
@@ -122,8 +122,9 @@ function rOverview(v) {
     liveHtml = `<div id="live-banner">
       <span class="live-dot"></span>
       <div class="what">
-        <div class="title">${esc(live.lesson_title)}</div>
-        <div class="sub">${live.attendees} في الغرفة${partTag} · بدأت ${fmt(live.scheduled_at)}</div>
+        <div class="title">${esc(live.lesson_title)} <span id="pb-audio" class="pill plain">…</span></div>
+        <div class="sub">${(live.present?.length ?? 0)} في الغرفة الآن · ${live.attendees} حضروا${partTag} · بدأت ${fmt(live.scheduled_at)}</div>
+        ${live.present?.length ? `<div class="present">${live.present.slice(0, 12).map(n => `<span>${esc(n)}</span>`).join('')}${live.present.length > 12 ? `<span>+${live.present.length - 12}</span>` : ''}</div>` : ''}
       </div>
       <div id="player-bar" dir="ltr">
         <button class="pbtn" title="من البداية" onclick="pctl('restart')">${icon('restart')}</button>
@@ -133,7 +134,7 @@ function rOverview(v) {
         <span id="pb-pos" class="pb-time">…</span>
         <input id="pb-vol" type="range" min="0" max="200" value="100" title="مستوى الصوت" onchange="pctlVol(this.value)">
       </div>
-      <button class="btn danger" onclick="act('action/finish')">${icon('stop')} إنهاء الحصة وصرف النقاط</button>
+      <button class="btn danger" onclick="if(confirm('إنهاء الحصة الآن؟ يتوقف الصوت ويُرسل ملخص الحضور للأعضاء.'))act('action/finish')">${icon('stop')} إنهاء الحصة</button>
     </div>`;
     pollPlayer();
     clearInterval(state.pp);
@@ -188,11 +189,15 @@ function rOverview(v) {
 
   const o = d.overview;
   const qDone = d.quests.reduce((n, q) => n + (q.done || 0), 0);
-  const summary = `<div class="surface" style="display:flex;gap:26px;flex-wrap:wrap;align-items:baseline">
-    <div><b style="font-size:17px">${o.lessonsDone}/${o.lessonsTotal}</b> <span class="dim">درس مكتمل</span></div>
-    <div><b style="font-size:17px">${d.courses.length}</b> <span class="dim">دورة${d.courses.length > 1 ? ` · ${d.courses.slice(0, 2).map(c => esc(c.title)).join('،')}${d.courses.length > 2 ? ' وغيرها' : ''}` : d.courses.length === 1 ? ` · ${esc(d.courses[0].title)}` : ''}</span></div>
-    <div><b style="font-size:17px">${d.participants.length}</b> <span class="dim">عضو</span></div>
-    <div><b style="font-size:17px">${d.quests.length}</b> <span class="dim">عنصر بالقائمة · أنجزه ${qDone}</span></div>
+  const drifting = d.participants.filter(p => ['slipping', 'inactive'].includes(p.engagement?.status));
+  const regular = d.participants.filter(p => p.engagement?.status === 'regular').length;
+  const summary = `<div class="surface sum-grid">
+    <div><b>${o.lessonsDone}/${o.lessonsTotal}</b><span>درس مكتمل · ${d.courses.length} دورة</span></div>
+    <div><b>${d.participants.length}</b><span>عضو · ${regular} منتظم</span></div>
+    <div><b>${d.quests.length}</b><span>عنصر إنجاز · أُنجز ${qDone} مرة</span></div>
+    ${drifting.length
+      ? `<a class="sum-alert" href="#/members" onclick="state.memberSeg='all'"><b>${drifting.length}</b><span>يحتاجون متابعة — متراجع أو منقطع ←</span></a>`
+      : `<div><b>0</b><span>يحتاج متابعة — الجميع منتظم</span></div>`}
   </div>`;
 
   v.innerHTML = liveHtml + `<div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
@@ -208,6 +213,14 @@ const fmtSec = s => {
 };
 
 function paintPlayer(p) {
+  // the one thing the owner must know mid-class: can the room hear the lesson?
+  const a = $('#pb-audio');
+  if (a) {
+    const [cls, txt] = !p?.live ? ['bad', 'لا صوت — تحقّق من الكوكيز']
+      : p.buffering ? ['warn', 'جارٍ تجهيز الصوت'] : p.paused ? ['plain', 'متوقف مؤقتاً']
+      : p.streaming ? ['ok', 'الصوت يعمل'] : ['bad', 'لا صوت — تحقّق من الكوكيز'];
+    a.className = 'pill ' + cls; a.textContent = txt;
+  }
   const el = $('#pb-pos');
   if (!el || !p?.live) return;
   $('#pb-toggle').innerHTML = p.paused ? icon('play') : icon('pause');
@@ -659,31 +672,68 @@ async function addGroup() {
 }
 
 /* ============ MEMBERS ============ */
+/* engagement: who keeps coming, who is drifting — owner's job #3 ("see who's engaged") */
+const ENG = {
+  slipping: { label: 'متراجع', cls: 'warn', hint: 'حضر بعض الحصص الأخيرة فقط' },
+  inactive: { label: 'منقطع', cls: 'bad', hint: 'لم يحضر أياً من آخر ٤ حصص' },
+  never: { label: 'لم يحضر بعد', cls: 'plain', hint: 'تفاعل لكنه لم يدخل حصة' },
+  regular: { label: 'منتظم', cls: 'ok', hint: 'حضر ٣ من آخر ٤ حصص أو أكثر' },
+};
+const ENG_ORDER = ['slipping', 'inactive', 'never', 'regular']; // who needs attention first
+const engOf = p => p.engagement?.status ?? 'never';
+// one dot per recent held class, oldest → newest in reading order
+const attDots = e => !e?.recent?.length ? '<span class="vdim">—</span>'
+  : `<span class="att-dots" title="آخر ${e.recent.length} حصص">${[...e.recent].reverse()
+    .map(x => `<i class="${x ? 'on' : ''}"></i>`).join('')}</span>`;
+
 function rMembers(v) {
   const d = state.data;
   $('#page-actions').innerHTML = `<span class="dim">${d.participants.length} عضو</span>`;
   const q = state.memberFilter.trim().toLowerCase();
-  const list = d.participants.filter(p =>
-    !q || p.name.toLowerCase().includes(q) || String(p.user_id).includes(q));
+  const seg = state.memberSeg || 'all';
+  const counts = Object.fromEntries(ENG_ORDER.map(k => [k, d.participants.filter(p => engOf(p) === k).length]));
+  const list = d.participants
+    .filter(p => !q || p.name.toLowerCase().includes(q) || String(p.user_id).includes(q))
+    .filter(p => seg === 'all' || engOf(p) === seg)
+    .sort((a, b) => ENG_ORDER.indexOf(engOf(a)) - ENG_ORDER.indexOf(engOf(b))
+      || String(b.engagement?.lastAt ?? '').localeCompare(String(a.engagement?.lastAt ?? '')));
 
-  const rows = list.map(p => `<tr style="cursor:pointer" onclick="openMember('${p.user_id}')">
-    <td><b>${esc(p.name)}</b>${p.dms_enabled ? '' : ' <span class="pill warn">مكتوم الإشعارات</span>'}</td>
-    <td>سلسلة ${p.streak}</td>
-    <td>${p.lessons_done}/${d.lessons.length}</td>
-    <td class="dim">${p.last_activity ? fmt(p.last_activity) : '—'}</td>
-  </tr>`).join('');
+  const rows = list.map(p => {
+    const e = p.engagement, st = ENG[engOf(p)];
+    return `<tr style="cursor:pointer" onclick="openMember('${p.user_id}')">
+    <td><b>${esc(p.name)}</b>${p.dms_enabled ? '' : ' <span class="pill plain" title="أوقف رسائل البوت الخاصة">بلا رسائل</span>'}
+      <div class="vdim m-only">${e?.lastAt ? 'آخر حضور ' + fmt(e.lastAt) : 'لم يحضر بعد'}</div></td>
+    <td><span class="pill ${st.cls}" title="${st.hint}">${st.label}</span></td>
+    <td>${attDots(e)}</td>
+    <td class="dim opt">${e?.lastAt ? fmt(e.lastAt) : '—'}</td>
+    <td class="opt">${p.lessons_done}/${d.lessons.length}</td>
+    <td class="opt">${p.streak ? `${p.streak}` : '<span class="vdim">0</span>'}</td>
+  </tr>`;
+  }).join('');
+
+  const segBtn = (k, label, n) => `<button class="seg${seg === k ? ' on' : ''}" onclick="state.memberSeg='${k}';render()">${label} <b>${n}</b></button>`;
+  const attention = counts.slipping + counts.inactive;
 
   v.innerHTML = `
   <div class="surface" style="padding:12px 14px">
-    <div style="position:relative">
-      <span style="position:absolute;inset-inline-start:10px;top:50%;transform:translateY(-50%);color:var(--text-3)">${icon('search')}</span>
-      <input id="msearch" placeholder="ابحث بالاسم أو رقم العضو…" value="${esc(state.memberFilter)}" style="width:100%;padding-inline-start:36px">
+    <div class="eng-head">
+      <div class="segs" role="group" aria-label="تصفية حسب الحضور">
+        ${segBtn('all', 'الكل', d.participants.length)}
+        ${ENG_ORDER.map(k => segBtn(k, ENG[k].label, counts[k])).join('')}
+      </div>
+      <div style="position:relative;flex:1;min-width:200px">
+        <span style="position:absolute;inset-inline-start:10px;top:50%;transform:translateY(-50%);color:var(--text-3)">${icon('search')}</span>
+        <input id="msearch" placeholder="ابحث بالاسم أو رقم العضو…" value="${esc(state.memberFilter)}" style="width:100%;padding-inline-start:36px">
+      </div>
     </div>
+    ${attention ? `<div class="eng-note">${counts.slipping ? `<b>${counts.slipping}</b> متراجع` : ''}${counts.slipping && counts.inactive ? ' · ' : ''}${counts.inactive ? `<b>${counts.inactive}</b> منقطع` : ''} — يظهرون أولاً؛ اضغط على العضو لترى سجلّه كاملاً.</div>` : ''}
   </div>
   <div class="surface"><h2>الأعضاء</h2>
-    <div class="tbl-wrap"><table>
-      <thead><tr><th>العضو</th><th>السلسلة</th><th>الدروس</th><th>آخر نشاط</th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="4" class="empty">${q ? 'لا نتائج للبحث «' + esc(q) + '»' : 'لا أعضاء بعد.<br><b>يظهر العضو هنا من لحظة أول حضور أو أول درس يكمله.</b>'}</td></tr>`}</tbody>
+    <div class="tbl-wrap eng-table"><table>
+      <thead><tr><th>العضو</th><th>الحالة</th><th>آخر ٤ حصص</th><th class="opt">آخر حضور</th><th class="opt">الدروس</th><th class="opt">السلسلة</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="6" class="empty">${q ? 'لا نتائج للبحث «' + esc(q) + '»'
+        : seg !== 'all' ? `لا أعضاء «${ENG[seg].label}» الآن.`
+        : 'لا أعضاء بعد.<br><b>يظهر العضو هنا من لحظة أول حضور أو أول درس يكمله.</b>'}</td></tr>`}</tbody>
     </table></div>
   </div>`;
   const inp = $('#msearch');
@@ -809,8 +859,6 @@ async function addQuest() {
 /* ============ SETTINGS ============ */
 const SETTING_DEFS = [
   ['tz', 'المنطقة الزمنية'],
-  ['xp_attendance', 'نقاط الحضور'],
-  ['xp_completion', 'نقاط إكمال الدرس'],
   ['nudge_hour', 'ساعة التنبيه (0-23)'],
   ['nudge_cooldown_hours', 'فترة التنبيه (ساعات)'],
   ['recap_day', 'يوم الملخص (0=الأحد)'],

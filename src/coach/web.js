@@ -181,6 +181,7 @@ export function startWeb({ client = null, bus }) {
       video_sec: l.video_duration_sec ?? null,
     }));
     const sessPart = s => { const p = A.sessionPartInfo(s); return { part: p.part, parts: p.parts, from_min: p.fromMin, to_min: p.toMin }; };
+    const engagement = A.memberEngagement();
     const participants = A.listParticipants().map(p => {
       const xp = A.xpTotal(p.user_id);
       const tl = memberTimeline(p.user_id);
@@ -189,6 +190,7 @@ export function startWeb({ client = null, bus }) {
         level: A.levelFor(xp), streak: A.currentStreak(p.user_id),
         lessons_done: A.listProgress(p.user_id).length,
         dms_enabled: !!p.dms_enabled, last_activity: tl[0]?.at ?? null,
+        engagement: engagement[p.user_id] ?? null,
       };
     });
     const tpl = normalizeTemplate(A.overview().template);
@@ -234,6 +236,9 @@ export function startWeb({ client = null, bus }) {
       live: live ? {
         id: live.id, lesson_title: A.getLesson(live.lesson_id)?.title,
         scheduled_at: live.scheduled_at, attendees: A.sessionAttendance(live.id).length,
+        // who is in the room right now (joined, not yet left)
+        present: A.sessionAttendance(live.id).filter(a => !a.left_at)
+          .map(a => A.getParticipant(a.user_id)?.display_name || a.user_id),
         ...sessPart(live),
       } : null,
       nextSession: o.next_session,

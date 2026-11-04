@@ -169,6 +169,40 @@ td.actions{white-space:nowrap}
 .pill.plain{background:var(--navy-100);color:var(--navy-700)}
 .pill.warn{background:var(--gold-tint);color:var(--gold-txt)}
 
+/* ---------- overview summary strip ---------- */
+.sum-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:4px 18px;padding:14px 18px}
+.sum-grid>*{display:flex;flex-direction:column;gap:2px;padding:4px 0;text-decoration:none;color:inherit}
+.sum-grid b{font-size:19px;font-weight:800;color:var(--navy-900)}
+.sum-grid span{font-size:13px;color:var(--text-2)}
+.sum-grid .sum-alert{border-radius:8px;padding:4px 10px;margin:-4px -10px;transition:background .15s}
+.sum-grid .sum-alert b{color:var(--gold-txt)}
+.sum-grid .sum-alert:hover{background:var(--gold-tint)}
+
+/* ---------- members: engagement filter + attendance dots ---------- */
+.eng-head{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.segs{display:flex;gap:4px;flex-wrap:wrap;background:var(--card-2);border:1px solid var(--line);border-radius:var(--r);padding:3px}
+.seg{
+  font:inherit;font-size:13px;font-weight:500;color:var(--text-2);background:transparent;
+  border:0;border-radius:7px;padding:6px 11px;cursor:pointer;transition:background .15s,color .15s;
+}
+.seg b{font-weight:800;color:var(--text-3);margin-inline-start:2px}
+.seg:hover{color:var(--navy-800);background:var(--tint)}
+.seg.on{background:var(--card);color:var(--navy-900);font-weight:700;box-shadow:0 1px 3px rgba(22,41,79,.12)}
+.seg.on b{color:var(--gold-txt)}
+.eng-note{margin-top:10px;font-size:13px;color:var(--text-2)}
+.eng-note b{color:var(--navy-900)}
+.att-dots{display:inline-flex;gap:5px;vertical-align:middle}
+.att-dots i{width:10px;height:10px;border-radius:50%;background:var(--line);border:1px solid var(--line-2)}
+.att-dots i.on{background:var(--gold);border-color:var(--gold-txt)}
+.m-only{display:none}
+@media (max-width:640px){
+  /* members: name · status · dots fit a phone; the rest moves under the name */
+  .eng-table table{min-width:0}
+  .eng-table .opt{display:none}
+  .eng-table .m-only{display:block;margin-top:2px}
+  .eng-table td{padding:9px 6px}
+}
+
 /* empty states */
 .empty{padding:34px 12px;text-align:center;color:var(--text-3);font-size:14.5px}
 .empty b{color:var(--text-2)}
@@ -198,6 +232,9 @@ td.actions{white-space:nowrap}
 #live-banner .what{flex:1;min-width:220px}
 #live-banner .title{font-size:17px;font-weight:800;color:var(--navy-900)}
 #live-banner .sub{color:var(--text-2);font-size:13px;margin-top:3px}
+#live-banner .title .pill{vertical-align:middle;margin-inline-start:6px}
+#live-banner .present{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+#live-banner .present span{font-size:12px;font-weight:500;color:var(--navy-700);background:var(--navy-100);border-radius:99px;padding:2px 9px}
 
 /* player bar (RTL page, LTR controls) */
 #player-bar{
