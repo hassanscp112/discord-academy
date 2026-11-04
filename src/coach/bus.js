@@ -25,7 +25,15 @@ export function createBus(client) {
       catch (e) { console.log('[coach] dm failed:', e.message); return null; }
     },
     async bossDm(payload) {
-      for (const id of config.bossIds) await this.dm(id, payload);
+      // own arrays per recipient: discord.js mutates `attachments` while resolving uploads,
+      // so one shared payload breaks the second owner's DM (e.g. the daily backup file)
+      for (const id of config.bossIds) {
+        await this.dm(id, {
+          ...payload,
+          ...(payload.files ? { files: [...payload.files] } : {}),
+          ...(payload.attachments ? { attachments: [...payload.attachments] } : {}),
+        });
+      }
     },
   };
 }

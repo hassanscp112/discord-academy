@@ -83,16 +83,19 @@ export async function refreshAcademyDashboard(client, { force = false } = {}) {
     if (!ch) return;
     const buf = await renderCard(academyCardHTML(cardData()));
     if (!buf) { console.log('[acadash] render unavailable'); return; }
-    const payload = { files: [new AttachmentBuilder(buf, { name: 'academy.jpg' })], attachments: [] };
+    // a fresh payload per attempt: discord.js appends the upload to `attachments` while
+    // resolving, so reusing it after a failed edit sends 2 attachment entries for 1 file
+    // (→ «attachments[1] ATTACHMENT_NOT_FOUND» and the hub card never re-posts)
+    const payload = () => ({ files: [new AttachmentBuilder(buf, { name: 'academy.jpg' })], attachments: [] });
     const msgId = getSetting('academy_dash_msg');
     if (msgId) {
       try {
         const msg = await ch.messages.fetch(msgId);
-        await msg.edit(payload);
+        await msg.edit(payload());
         return;
       } catch { /* حُذفت — نعيد النشر */ }
     }
-    const m = await ch.send(payload);
+    const m = await ch.send(payload());
     setSetting('academy_dash_msg', m.id);
   } catch (e) { console.log('[acadash] refresh failed:', e.message); }
 }
