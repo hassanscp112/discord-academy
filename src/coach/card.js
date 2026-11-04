@@ -56,7 +56,16 @@ async function getBrowser() {
 // html must contain one element with id="card" — that element is screenshotted
 // one reusable page — page creation is expensive on weak hardware
 let pagePool = null;
-export async function warmCardRenderer() { await getBrowser(); }
+// slow hosts (bot-hosting.net gives 20% of a core) need far longer than a PC; CARD_TIMEOUT_MS to tune
+const RENDER_TIMEOUT_MS = Number(process.env.CARD_TIMEOUT_MS) || 60000;
+// boot warm-up: launch + one throwaway render, so the first member card doesn't pay for
+// Chromium start, font parsing and the fontconfig cache build
+export async function warmCardRenderer() {
+  if (!await getBrowser()) return;
+  const t0 = Date.now();
+  const ok = await renderCard(page('<div style="padding:20px;font-weight:800">هُدَى 📖🔔</div>'));
+  console.log(`[card] warm-up ${ok ? 'ok' : 'failed'} in ${Math.round((Date.now() - t0) / 1000)}s`);
+}
 
 async function doRender(html, { width = 860 } = {}) {
   const b = await getBrowser();
@@ -66,7 +75,9 @@ async function doRender(html, { width = 860 } = {}) {
       pagePool = await b.newPage();
       await pagePool.setViewport({ width: width + 40, height: 600, deviceScaleFactor: 1.5 });
     }
-    await pagePool.setContent(html, { waitUntil: 'networkidle0', timeout: 15000 });
+    // everything is inlined (fonts, logo) — wait for load + fonts, not for network silence
+    await pagePool.setContent(html, { waitUntil: 'load', timeout: RENDER_TIMEOUT_MS });
+    await pagePool.evaluate(() => document.fonts.ready);
     const el = await pagePool.$('#card');
     return await (el ?? pagePool).screenshot({ type: 'jpeg', quality: 88 });
   } catch (e) {
