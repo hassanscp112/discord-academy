@@ -63,9 +63,41 @@ async function ensureFfmpeg() {
   else log(`ffmpeg: ${local} OK${enc.stdout.includes('libopus') ? '' : ' — WARNING: no libopus encoder'}`);
 }
 
+// Image cards need a Chromium. Hosts without one (bot-hosting.net) get Chrome's headless
+// shell under tools/chrome — puppeteer-core's own downloader, same build puppeteer tests with.
+async function ensureBrowser() {
+  if (process.env.BROWSER_PATH) return log(`browser: $BROWSER_PATH = ${process.env.BROWSER_PATH}`);
+  const system = ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome'].find(p => existsSync(p));
+  if (system) return log(`browser: ${system}`);
+  const B = await import('@puppeteer/browsers');
+  const cacheDir = resolve(TOOLS, 'chrome');
+  const platform = B.detectBrowserPlatform();
+  let installed = (await B.getInstalledBrowsers({ cacheDir })).find(b => b.browser === B.Browser.CHROMEHEADLESSSHELL);
+  if (!installed) {
+    const buildId = await B.resolveBuildId(B.Browser.CHROMEHEADLESSSHELL, platform, 'stable');
+    log(`downloading chrome-headless-shell ${buildId} (for image cards)`);
+    installed = await B.install({ browser: B.Browser.CHROMEHEADLESSSHELL, buildId, cacheDir, platform });
+  }
+  process.env.BROWSER_PATH = installed.executablePath;
+  log(`browser: ${installed.executablePath} ${works(installed.executablePath, ['--version']) ? 'OK' : 'NOT RUNNABLE'}`);
+}
+
+// Cards use emoji (📖 🔔 …); minimal containers ship no emoji font → empty boxes.
+// fontconfig reads ~/.local/share/fonts, so Chromium picks it up with no config.
+async function ensureEmojiFont() {
+  const dir = resolve(process.env.HOME || TOOLS, '.local/share/fonts');
+  const font = resolve(dir, 'NotoColorEmoji.ttf');
+  if (existsSync(font)) return log('emoji font: OK');
+  const fc = spawnSync('fc-list', [':charset=1f4d6'], { encoding: 'utf8', timeout: 15000 });
+  if (fc.status === 0 && fc.stdout.trim()) return log('emoji font: system');
+  mkdirSync(dir, { recursive: true });
+  await download('https://raw.githubusercontent.com/googlefonts/noto-emoji/main/2D/fonts/NotoColorEmoji.ttf', font);
+  spawnSync('fc-cache', ['-f', dir], { stdio: 'ignore', timeout: 60000 });
+}
+
 if (process.platform !== 'win32') {
   mkdirSync(TOOLS, { recursive: true });
-  for (const step of [ensureYtdlp, ensureFfmpeg]) {
+  for (const step of [ensureYtdlp, ensureFfmpeg, ensureBrowser, ensureEmojiFont]) {
     try { await step(); } catch (e) { log(`${step.name} failed: ${e.message} — continuing without it`); }
   }
 }

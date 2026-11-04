@@ -23,8 +23,10 @@ export const MEMBER_VIEWS = [
   ['quests', '📜 الإنجازات'],
   ['subs', '🔔 الإشعارات'],
 ];
-const viewFooter = view => `${MARK}·${view}`;
-// only a footer naming a real view counts; anything else (old formats) is the overview
+// members see an Arabic footer; the active tab is read from the disabled nav button.
+// MARK only survives for recognising dashboards posted by older versions.
+const viewFooter = view => `هُدَى · ${MEMBER_VIEWS.find(([v]) => v === view)?.[1] ?? 'لوحتك'}`;
+// legacy footer: only one naming a real view counts; anything else (old formats) is the overview
 const viewOf = embed => {
   const t = embed?.footer?.text ?? '';
   if (!t.startsWith(MARK)) return null;
@@ -123,14 +125,15 @@ export function buildMemberEmbed(userId) {
     .setFooter({ text: viewFooter('overview') });
 
   embed.addFields({
-    name: '⚡ نقاطك',
-    value: `🔥 سلسلة **${streak}** · واصل التقدم!`,
+    name: '🔥 سلسلتك',
+    value: streak ? `**${streak}** · واصل التقدم!` : 'احضر حصتك القادمة لتبدأ سلسلتك',
     inline: false,
   });
 
   for (const c of A.listCourses()) {
     const cp = A.courseProgress(c.id, userId);
-    const nextLine = cp.next ? `\n**التالي:** ${cp.next.title}` : '\n🎉 أكملت الدورة كاملة';
+    const nextLine = !cp.total ? '\nلا دروس في هذه الدورة بعد'
+      : cp.next ? `\n**التالي:** ${cp.next.title}` : '\n🎉 أكملت الدورة كاملة';
     embed.addFields({
       name: `📖 ${c.title}`,
       value: `\`${bar(cp.done, cp.total)}\` **${cp.done}/${cp.total}**${nextLine}`.slice(0, 1024),

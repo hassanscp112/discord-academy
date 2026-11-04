@@ -40,9 +40,11 @@ let launching = null;
 async function getBrowser() {
   if (browser?.connected) return browser;
   if (!launching) {
+    const exe = exePath();
     launching = puppeteer.launch({
-      executablePath: exePath(),
-      headless: true,
+      executablePath: exe,
+      // chrome-headless-shell (scripts/start.js on container hosts) needs the 'shell' mode
+      headless: /chrome-headless-shell/i.test(exe ?? '') ? 'shell' : true,
       args: ['--no-sandbox', '--disable-gpu', '--hide-scrollbars', '--force-color-profile=srgb', '--font-render-hinting=none'],
       protocolTimeout: 90000,
     }).then(b => { browser = b; launching = null; return b; })
@@ -60,7 +62,7 @@ async function doRender(html, { width = 860 } = {}) {
   const b = await getBrowser();
   if (!b) return null;
   try {
-    if (!pagePool || !pagePool.isClosed?.()) {
+    if (!pagePool || pagePool.isClosed()) { // reuse the one page; only reopen if it died
       pagePool = await b.newPage();
       await pagePool.setViewport({ width: width + 40, height: 600, deviceScaleFactor: 1.5 });
     }
@@ -128,7 +130,7 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '
 // ---------- member overview card ----------
 export function memberCardHTML(d) {
   const courses = d.courses.slice(0, 4).map(c =>
-    barRow(esc(c.title), c.next ? 'التالي: ' + esc(c.next).slice(0, 40) : 'مكتملة 🎉',
+    barRow(esc(c.title), !c.total ? 'لا دروس بعد' : c.next ? 'التالي: ' + esc(String(c.next).slice(0, 40)) : 'مكتملة 🎉',
       c.done, c.total, `${c.done}/${c.total}`)).join('');
   const books = d.books.slice(0, 3).map(b =>
     barRow(esc(b.title), b.finished ? 'أكمله 🎉' : '', b.page, b.total_pages,
