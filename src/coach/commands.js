@@ -15,7 +15,6 @@ import { finishSession, proposeSlot } from './sessions.js';
 import { markMemberDirty, memberDashPayload } from './memberdash.js';
 import { stopStream } from './streamer.js';
 import { createBus } from './bus.js';
-import { refreshDashboard, markDashboardDirty } from './dashboard.js';
 
 export const commandDefs = [
   new SlashCommandBuilder().setName('lesson').setDescription('إدارة دروس الدورة (للإدارة)')
@@ -97,7 +96,6 @@ export async function handleCommand(interaction) {
         url: opts.getString('url') ?? '',
         durationMin: opts.getInteger('duration') ?? 60,
       });
-      markDashboardDirty();
       return interaction.reply({ embeds: [e('✅ أُضيف الدرس', `#${id} — **${opts.getString('title')}**\nالترتيب: ${A.getLesson(id).position}`)] });
     }
     if (sub === 'list') {
@@ -109,7 +107,6 @@ export async function handleCommand(interaction) {
     }
     if (sub === 'remove') {
       const ok = A.removeLesson(opts.getInteger('id', true));
-      markDashboardDirty();
       return interaction.reply({ embeds: [e(ok ? '🗑️ حُذف' : '❌ غير موجود', ok ? 'حُذف الدرس وحصصه.' : 'لا يوجد درس بهذا الرقم.', ok ? 0x57f287 : 0xed4245)] });
     }
   }
@@ -123,15 +120,12 @@ export async function handleCommand(interaction) {
       const time = opts.getString('time', true);
       if (!/^\d{2}:\d{2}$/.test(time)) return interaction.reply({ embeds: [e('❌ وقت غير صحيح', 'اكتب الوقت بصيغة `HH:mm`، مثل `20:00`')] });
       A.setTemplate({ days, time });
-      markDashboardDirty();
       return interaction.reply({ embeds: [e('✅ ضُبط الموعد الأسبوعي', `كل أسبوع يوم **${days.map(d => DAY_AR[d]).join(' و')}** الساعة **${time}** (${tz}).\nالآن نفّذ \`/schedule generate\`.`)] });
     }
     if (sub === 'generate') {
       try {
         const created = A.generateSchedule({});
         if (!created.length) return interaction.reply({ embeds: [e('📅 لا شيء للجدولة', 'كل الدروس المخططة لها حصص بالفعل.')] });
-        markDashboardDirty();
-        await refreshDashboard(interaction.client, { force: true });
         const lines = created.map(s => `**${A.getLesson(s.lesson_id).title}** → ${fmtInTz(new Date(s.scheduled_at), tz)}`);
         return interaction.reply({ embeds: [e('📅 جُدولت الحصص', lines.join('\n'))] });
       } catch (err) {
@@ -153,13 +147,10 @@ export async function handleCommand(interaction) {
       }
       const when = zonedToUtc(date, time, tz);
       A.setSession(id, when.toISOString());
-      markDashboardDirty();
-      await refreshDashboard(interaction.client, { force: true });
       return interaction.reply({ embeds: [e('📆 نُقلت الحصة', `#${id} → **${fmtInTz(when, tz)}**`)] });
     }
     if (sub === 'cancel') {
       A.cancelSession(opts.getInteger('id', true));
-      markDashboardDirty();
       return interaction.reply({ embeds: [e('🚫 أُلغيت الحصة', `#${opts.getInteger('id')} — يبقى الدرس في الدورة.`)] });
     }
   }
@@ -301,8 +292,6 @@ export async function handleButton(interaction) {
     const res = A.completeLesson(interaction.user.id, lesson.id);
     if (res.already) return interaction.reply({ content: 'هذا الدرس مسجل من قبل ✅', ephemeral: true });
     markMemberDirty(interaction.user.id);
-    markDashboardDirty();
-    await refreshDashboard(interaction.client, { force: true });
     const done = { content: `🎉 سُجّل إنجاز **${lesson.title}** — بارك الله فيك!`, ephemeral: true };
     // on the member's own "you attended" card the button has served its purpose — remove it
     if (interaction.channelId && interaction.channelId === A.getParticipant(interaction.user.id)?.private_channel_id) {
@@ -322,8 +311,6 @@ export async function handleButton(interaction) {
       await interaction.channel?.send(templates.quest_done
         .replace('{{mention}}', `<@${interaction.user.id}>`)
         .replace('{{title}}', done.quest.title)).catch(() => null);
-      markDashboardDirty();
-      await refreshDashboard(interaction.client, { force: true }).catch(() => null);
       return interaction.reply({ content: `سُجّل إنجازك ✅ — **${done.quest.title}**`, ephemeral: true });
     }
   }
@@ -336,8 +323,6 @@ export async function handleButton(interaction) {
 
     if (action === 'move' && session.status === 'missed_poll' && session.proposed_at) {
       A.setSession(id, session.proposed_at);
-      markDashboardDirty();
-      await refreshDashboard(interaction.client, { force: true });
       return interaction.update({ content: `📆 نُقل **${lesson.title}** إلى **${fmtInTz(new Date(session.proposed_at), config.tz)}** — نراكم هناك!`, components: [] });
     }
     if (action === 'slots' && session.status === 'missed_poll') {
@@ -351,15 +336,12 @@ export async function handleButton(interaction) {
     if (action === 'set') {
       if (!boss) return interaction.reply({ content: 'هذا الإجراء لمشرف الأكاديمية فقط.', ephemeral: true });
       A.setSession(id, slotIso);
-      markDashboardDirty();
-      await refreshDashboard(interaction.client, { force: true });
       return interaction.update({ content: `📆 نُقل **${lesson.title}** إلى **${fmtInTz(new Date(slotIso), config.tz)}**`, components: [] });
     }
     if (action === 'skip') {
       if (!boss) return interaction.reply({ content: 'هذا الإجراء لمشرف الأكاديمية فقط.', ephemeral: true });
       A.cancelSession(id);
       stopStream();
-      markDashboardDirty();
       return interaction.update({ content: `⏭️ تُخطّيت حصة **${lesson.title}** — يبقى الدرس في قائمة الدورة.`, components: [] });
     }
     if (action === 'finish') {

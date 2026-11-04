@@ -1,5 +1,4 @@
-// Coach web server: Arabic SPA (public/) + cookie-auth dashboard API
-// + token-auth API for the AI Admin studio. Old HTML pages are gone.
+// Coach web server: the Arabic owner dashboard SPA (public/) + its cookie-auth API.
 import express from 'express';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
@@ -10,8 +9,6 @@ import * as A from '../core/academy.js';
 import { getSetting, setSetting, allSettings, getDb } from '../core/db.js';
 import { fmtInTz, zonedToUtc, normalizeTemplate } from '../core/time.js';
 import { config } from '../core/config.js';
-import { applyPublish, currentRevision } from './publish.js';
-import { refreshDashboard, markDashboardDirty } from './dashboard.js';
 import { stopStream, playerState, controlPlayer } from './streamer.js';
 import { fetchPlaylist, fetchVideoMeta } from './importer.js';
 import { publishBook, unpublishBook, syncLibrary } from './library.js';
@@ -24,7 +21,7 @@ import { templates } from '../core/templates.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const sha256 = v => createHash('sha256').update(String(v)).digest();
-// constant-time compare; an unset secret never matches (dry-run has no password/token)
+// constant-time compare; an unset secret never matches (dry-run has no password)
 const sameSecret = (given, secret) => !!secret && timingSafeEqual(sha256(given ?? ''), sha256(secret));
 
 // ---- dashboard sessions: random per-login tokens, stored hashed in data/ so they
@@ -139,34 +136,6 @@ export function startWeb({ client = null, bus }) {
   const hasDash = req => validSession(req.cookies?.dash);
   const dashAuth = (req, res, next) => (hasDash(req) ? next() : res.status(401).json({ error: 'غير مصرح' }));
 
-  // ---------- token API (AI studio) ----------
-  const apiAuth = (req, res, next) => {
-    if (!sameSecret(req.headers['x-api-token'], config.apiToken)) return res.status(401).json({ error: 'bad token' });
-    next();
-  };
-  app.get('/api/state', apiAuth, (_req, res) => {
-    res.json({
-      revision: currentRevision(), tz: config.tz, overview: A.overview(), lessons: A.listLessons(),
-      courses: A.listCourses().map(c => ({ ...c, lessons_total: A.listLessons(c.id).length })),
-      sessions: A.listSessions({ future: true, limit: 200 }).map(s => ({ ...s, lesson_title: A.getLesson(s.lesson_id)?.title })),
-      participants: A.listParticipants().map(p => ({
-        ...p, xp: A.xpTotal(p.user_id), level: A.levelFor(A.xpTotal(p.user_id)),
-        streak: A.currentStreak(p.user_id), lessons_done: A.listProgress(p.user_id).length,
-      })),
-      quests: A.listQuests().map(q => ({ ...q, done: A.questCompletionCount(q.id) })),
-      settings: allSettings(),
-    });
-  });
-  app.post('/api/publish', apiAuth, (req, res) => {
-    const result = applyPublish(req.body ?? {});
-    if (!result.ok) return res.status(result.code).json({ error: result.error, revision: result.revision });
-    markDashboardDirty();
-    refreshDashboard(client, { force: true }).finally(() => {
-      if (result.announce && bus) bus.postTo('channel_dashboard', { content: String(result.announce).slice(0, 1800) });
-      res.json({ ok: true, revision: result.revision, applied: result.applied });
-    });
-  });
-
   // ---------- SPA dash API (cookie) ----------
   app.get('/api/dash/data', dashAuth, async (req, res) => {
     const s = allSettings();
@@ -273,7 +242,7 @@ export function startWeb({ client = null, bus }) {
     res.json({ roster: A.courseRoster(+req.params.id) });
   });
 
-  const ok = (res, message) => { markDashboardDirty(); refreshDashboard(client, { force: true }).catch(() => {}); return res.json({ ok: true, message }); };
+  const ok = (res, message) => res.json({ ok: true, message });
 
   app.post('/api/dash/lesson/add', dashAuth, async (req, res) => {
     const { title, url = '', durationMin = 60, courseId = null } = req.body ?? {};

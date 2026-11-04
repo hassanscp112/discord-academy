@@ -1,11 +1,10 @@
 // Self-contained test run: exercises time math, schedule generation, the
-// session state machine, XP/levels/quests, and the publish API — all without
+// session state machine, quests, books, engagement and maintenance — all without
 // Discord (dry-run mode, throwaway DB).
 process.env.DB_PATH = './data/test-academy.db';
 process.env.TZ = 'UTC';
 process.env.COACH_DISABLE_DISCORD = '1';
 process.env.DASH_PASSWORD = 'test';
-process.env.API_TOKEN = 'test-token';
 // file-touching code (cache trim, backups, cookies) gets its own throwaway folders —
 // never the real data/cache, data/backups or data/cookies.txt
 process.env.AUDIO_CACHE_DIR = './data/test-cache';
@@ -17,7 +16,6 @@ const T = await import('../src/core/time.js');
 const A = await import('../src/core/academy.js');
 const { getDb, getTemplate } = await import('../src/core/db.js');
 const S = await import('../src/coach/sessions.js');
-const P = await import('../src/coach/publish.js');
 
 let pass = 0, fail = 0;
 function ok(cond, name) {
@@ -99,7 +97,7 @@ console.log('\n— long-video splitting + playlist import —');
   eq(imp.added.length, 1, 'duplicate videos skipped on import');
   eq(imp.skipped, 2, 'skips counted (dup + existing lesson)');
   eq(A.lessonParts(A.getLesson(imp.added[0].id)).parts, 1, '10-min video fits one class');
-  // clean up: later blocks (state machine, publish) assume only the 3 base lessons
+  // clean up: later blocks (state machine) assume only the 3 base lessons
   A.removeLesson(id);
   A.removeLesson(imp.added[0].id);
 }
@@ -309,35 +307,6 @@ console.log('\n— subscriptions, questions, member management —');
   ok(A.bookStats().find(b => b.id === pdfBook.id)?.has_pdf === false, 'clearBookPdf removes the flag');
   A.removeBook(pdfBook.id);
   A.removeBook(A.findBookByTitle('كتاب مؤقت').id);
-}
-
-console.log('\n— publish API —');
-{
-  const rev = P.currentRevision();
-  const bad = P.applyPublish({ base_revision: rev + 5, lessons: [{ position: 1, title: 'X' }] });
-  eq(bad.ok, false, 'stale revision is rejected');
-  eq(bad.code, 409, 'conflict code 409');
-
-  const good = P.applyPublish({
-    base_revision: rev,
-    template: { days: [1, 4], time: '19:00' },
-    lessons: [{ position: 1, title: 'Published 1', url: 'https://youtu.be/p1', duration_min: 50 }],
-    generate: {},
-  });
-  eq(good.ok, true, 'publish accepted');
-  ok(good.applied.generated >= 1, `generate created sessions (${good.applied.generated})`);
-  ok(A.listLessons().some(l => l.title === 'Published 1'), 'lesson added via publish');
-  eq(getTemplate(), { mode: 'days', days: [1, 4], time: '19:00' }, 'template applied (normalized)');
-  ok(A.nextSession() !== null, 'sessions exist after publish+generate');
-
-  const q = P.applyPublish({
-    base_revision: P.currentRevision(),
-    quests: [{ title: 'Pub quest', category: 'course' }],
-  });
-  eq(q.ok, true, 'quest publish accepted');
-  const pubQ = A.listQuests().find(x => x.title === 'Pub quest');
-  ok(!!pubQ, 'quest created via publish');
-  eq(pubQ.category, 'course', 'published quest carries its category');
 }
 
 console.log('\n— member engagement (dashboard) —');

@@ -9,7 +9,6 @@
   "scripts": {
     "start": "node scripts/start.js",
     "coach": "node src/coach/index.js",
-    "studio": "node src/ai-admin/index.js",
     "test": "node scripts/test-academy.js"
   },
   "dependencies": {

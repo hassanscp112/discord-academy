@@ -6,9 +6,7 @@ import { createBus } from './bus.js';
 import { commandDefs, handleCommand, handleButton, handleModal, handleSelect, handleContextMenu } from './commands.js';
 import { tick, finishSession } from './sessions.js';
 import { startEngines } from './checkins.js';
-import { refreshDashboard, invalidateDashboardCache } from './dashboard.js';
 import { startWeb } from './web.js';
-import { ensureLevelRoles } from './gamification.js';
 import { markMemberDirty, markAllMembersDirty, refreshMemberDashboards, postOnboarding } from './memberdash.js';
 import { initHealth, reportError } from './health.js';
 import { syncLibrary } from './library.js';
@@ -57,11 +55,8 @@ if (client) {
       try {
         await guild.commands.set(commandDefs.map(c => c.toJSON()));
         log(`registered ${commandDefs.length} slash commands in ${guild.name}`);
-        await ensureLevelRoles(guild).catch(e => log('role setup:', e.message));
       } catch (e) { log('command registration failed:', e.message); }
     }
-    invalidateDashboardCache();
-    await refreshDashboard(client, { force: true });
     // owner visibility: error DMs + daily heartbeat
     initHealth({ sendDm: content => bus.bossDm({ content }) });
     // pinned onboarding guide in the announcements channel (idempotent)

@@ -15,7 +15,6 @@ import { cookieArgs, YTDLP, FFMPEG } from './ytdlp.js';
 import { pruneAudioCache } from './maintenance.js';
 import { lavalinkEnabled, lavalinkPlay, lavalinkUpdate, lavalinkStop, lavalinkHasPlayer, trackIdentifiers, onLavalinkFailure } from './lavalink.js';
 
-const VIDEOBOT = process.env.VIDEOBOT_URL ?? 'http://127.0.0.1:8422';
 const CACHE_DIR = process.env.AUDIO_CACHE_DIR || 'data/cache';
 const prefetching = new Set();
 let player = null;
@@ -308,7 +307,6 @@ export function controlPlayer(op, { delta = 0, value = null } = {}) {
 
 export function stopStream() {
   killProcs();
-  fetch(`${VIDEOBOT}/stop`, { method: 'POST', signal: AbortSignal.timeout(3000) }).catch(() => {});
   play = null;
   lavalinkStop(config.guildId).catch(() => {});
   if (player) { try { player.stop(); } catch {} }

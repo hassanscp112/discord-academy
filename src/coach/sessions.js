@@ -7,7 +7,6 @@ import { getDb, getSetting, setSetting } from '../core/db.js';
 import { nextSlots, fmtInTz, humanDuration } from '../core/time.js';
 import { config } from '../core/config.js';
 import { templates } from '../core/templates.js';
-import { refreshDashboard, markDashboardDirty } from './dashboard.js';
 import { startStream, stopStream, prefetch, playerState } from './streamer.js';
 import { markMemberDirty, refreshMemberDashboards, postClassSummary } from './memberdash.js';
 import { refreshAcademyDashboard } from './acadashboard.js';
@@ -172,7 +171,6 @@ export async function tick({ client = null, bus, now = new Date() } = {}) {
           content: fill(templates.missed, { ...vars, proposed_when: fmtInTz(slot, config.tz) }),
           components: [sessRow(s)],
         });
-        markDashboardDirty();
         continue;
       }
       if (A.listSessions({ future: true }).some(x => x.status === 'live' && x.id !== s.id)) continue;
@@ -209,7 +207,6 @@ export async function tick({ client = null, bus, now = new Date() } = {}) {
           content: fill(templates.missed, { ...vars, proposed_when: fmtInTz(slot, config.tz) }),
           components: [sessRow(s)],
         });
-        markDashboardDirty();
       }
       continue;
     }
@@ -224,11 +221,9 @@ export async function tick({ client = null, bus, now = new Date() } = {}) {
         await bus.postTo('channel_dashboard', {
           content: fill(templates.missed_auto_moved, { lesson_title: lesson.title, when: fmtInTz(slot, config.tz) }),
         });
-        markDashboardDirty();
       }
     }
   }
-  await refreshDashboard(client);
   await refreshMemberDashboards(client).catch(e => console.log('[memberdash] sweep:', e.message));
   refreshAcademyDashboard(client).catch(e => console.log('[acadash] sweep:', e.message));
 }
@@ -269,8 +264,6 @@ export async function startSessionNow({ client = null, bus, lessonId, now = new 
   run("UPDATE sessions SET status = 'live', live_post_id = ? WHERE id = ?", msg?.id ?? '', s.id);
   recordPresent(client, s.id);
   if (lesson.url) startStream(client, streamOpts(s, lesson));
-  markDashboardDirty();
-  await refreshDashboard(client, { force: true });
   return { ok: true, session: A.getSession(s.id) };
 }
 
@@ -303,7 +296,5 @@ export async function finishSession({ client, bus, sessionId }) {
       partLine: partLine(res.session),
     }).catch(e => console.log('[sessions] class summary:', e.message));
   }
-  markDashboardDirty();
-  await refreshDashboard(client, { force: true });
   return res;
 }

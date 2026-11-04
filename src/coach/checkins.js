@@ -5,7 +5,6 @@ import { getSetting, setSetting } from '../core/db.js';
 import { templates } from '../core/templates.js';
 import { fmtInTz } from '../core/time.js';
 import { config } from '../core/config.js';
-import { markDashboardDirty } from './dashboard.js';
 import { healthTick } from './health.js';
 import { backupTick, pruneAudioCache } from './maintenance.js';
 
@@ -73,7 +72,6 @@ async function runRecap({ client, bus, now = new Date() } = {}) {
     const lines = r.falling.map(f => `💤 **${f.display_name || f.user_id}** — لا نشاط هذا الأسبوع`);
     await bus.bossDm({ content: `📉 **متأخرون هذا الأسبوع** (${r.falling.length}):\n${lines.join('\n')}` });
   }
-  markDashboardDirty();
 }
 
 export function startEngines({ client = null, bus, intervalMs = 60000 } = {}) {
