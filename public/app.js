@@ -834,7 +834,65 @@ function rSettings(v) {
       <tr><td class="dim">غرفة الحصة الصوتية</td><td><b>${esc(s.study_vc_name || s.study_vc || '—')}</b></td></tr>
       <tr><td class="dim">دور التنبيه</td><td dir="ltr"><b>${esc(s.ping_role || '—')}</b></td></tr>
     </table></div>
-  </div>`;
+  </div>
+  <div class="surface" id="sys"><h2>النظام</h2><div class="dim">جارٍ التحميل…</div></div>`;
+  loadSystem();
+}
+
+/* ---------- system: backups, restore, YouTube cookies ---------- */
+const ago = iso => {
+  if (!iso) return '—';
+  const d = Math.floor((Date.now() - new Date(iso)) / 86400000);
+  return d <= 0 ? 'اليوم' : d === 1 ? 'أمس' : `قبل ${d} أيام`;
+};
+async function loadSystem() {
+  const box = document.getElementById('sys');
+  if (!box) return;
+  let st;
+  try { st = await api('system'); } catch (e) { box.innerHTML = `<h2>النظام</h2><div class="dim">${esc(e.message)}</div>`; return; }
+  const cookiesWarn = !st.cookies || st.cookies.ageDays > 30;
+  const row = (label, value, warn = false) =>
+    `<tr><td class="dim">${label}</td><td><b${warn ? ' style="color:var(--bad)"' : ''}>${value}</b></td></tr>`;
+  box.innerHTML = `<h2>النظام</h2>
+    <div class="tbl-wrap"><table style="min-width:0">
+      ${row('كوكيز يوتيوب', st.cookies ? `مرفوعة ${ago(st.cookies.at)}` : 'غير موجودة — الصوت قد يُحظر', cookiesWarn)}
+      ${row('آخر نسخة احتياطية', st.lastBackupAt ? `${fmt(st.lastBackupAt)} (${ago(st.lastBackupAt)})` : 'لم تُنشأ بعد', !st.lastBackupAt)}
+      ${row('قاعدة البيانات', `${st.database.sizeMb} MB`)}
+      ${row('ذاكرة الصوت المؤقتة', `${st.cacheMb} / ${st.cacheMaxMb} MB`, st.cacheMb > st.cacheMaxMb)}
+      ${row('بطاقات الصور', st.cards ? 'تعمل ✓' : 'لا يوجد متصفح — نصوص بديلة', !st.cards)}
+      ${row('آخر مشكلة صوت', st.lastAudioProblem ? `${esc(st.lastAudioProblem.lesson)} · ${fmt(st.lastAudioProblem.at)}` : 'لا شيء ✓')}
+      ${row('مدة التشغيل / الذاكرة', `${st.uptimeMin} دقيقة · ${st.memoryMb} MB`)}
+    </table></div>
+    <div class="frow" style="margin-top:14px;gap:10px;flex-wrap:wrap">
+      <label class="btn quiet" style="cursor:pointer">⬆️ رفع cookies.txt
+        <input type="file" accept=".txt,text/plain" hidden onchange="uploadCookies(this)"></label>
+      <button class="btn quiet" onclick="location.href='/api/dash/system/backup'">⬇️ تحميل نسخة احتياطية الآن</button>
+      <label class="btn danger" style="cursor:pointer">♻️ استعادة قاعدة بيانات
+        <input type="file" accept=".db,.sqlite,application/octet-stream" hidden onchange="uploadDb(this)"></label>
+    </div>
+    <div class="dim" style="margin-top:10px;font-size:13px">تُرسل نسخة احتياطية يومياً إلى رسائلك الخاصة في الديسكورد (الساعة ٤ فجراً) ويُحتفظ بآخر ٧ نسخ على الخادم.
+    الكوكيز تُصدَّر من متصفح مسجّل الدخول إلى يوتيوب بإضافة «Get cookies.txt LOCALLY».</div>`;
+}
+async function postFile(path, file) {
+  const r = await fetch('/api/dash/' + path, { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: file });
+  if (r.status === 401) { location.href = '/login'; throw new Error('انتهت الجلسة'); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || 'خطأ غير متوقع');
+  return j;
+}
+async function uploadCookies(input) {
+  const f = input.files?.[0]; input.value = '';
+  if (!f) return;
+  try { toast((await postFile('system/cookies', await f.text())).message); loadSystem(); }
+  catch (e) { toast(e.message, true); }
+}
+async function uploadDb(input) {
+  const f = input.files?.[0]; input.value = '';
+  if (!f) return;
+  if (!confirm(`استبدال كل بيانات الأكاديمية بمحتوى «${f.name}»؟\nتُحفظ نسخة من البيانات الحالية تلقائياً قبل الاستبدال.`)) return;
+  toast('جارٍ الرفع والاستعادة…');
+  try { toast((await postFile('system/restore', f)).message); await refresh(false); }
+  catch (e) { toast(e.message, true); }
 }
 async function saveSettings() {
   const body = {};

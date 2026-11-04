@@ -7,6 +7,7 @@ import { fmtInTz } from '../core/time.js';
 import { config } from '../core/config.js';
 import { markDashboardDirty } from './dashboard.js';
 import { healthTick } from './health.js';
+import { backupTick, pruneAudioCache } from './maintenance.js';
 
 const fill = (text, vars) => text.replace(/\{\{(\w+)\}\}/g, (_, k) => vars?.[k] ?? '');
 
@@ -82,6 +83,8 @@ export function startEngines({ client = null, bus, intervalMs = 60000 } = {}) {
       await runNudges({ client, bus, now });
       await runRecap({ client, bus, now });
       await healthTick({ bus, now });
+      await backupTick({ bus, now });
+      if (now.getMinutes() === 30) pruneAudioCache(); // hourly disk-budget check
     } catch (e) { console.error('[coach] engine error:', e); }
   };
   loop();

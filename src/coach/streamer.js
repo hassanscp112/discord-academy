@@ -12,10 +12,11 @@ import { join } from 'node:path';
 import { getSetting } from '../core/db.js';
 import { config } from '../core/config.js';
 import { cookieArgs, YTDLP, FFMPEG } from './ytdlp.js';
+import { pruneAudioCache } from './maintenance.js';
 import { lavalinkEnabled, lavalinkPlay, lavalinkUpdate, lavalinkStop, lavalinkHasPlayer, trackIdentifiers, onLavalinkFailure } from './lavalink.js';
 
 const VIDEOBOT = process.env.VIDEOBOT_URL ?? 'http://127.0.0.1:8422';
-const CACHE_DIR = 'data/cache';
+const CACHE_DIR = process.env.AUDIO_CACHE_DIR || 'data/cache';
 const prefetching = new Set();
 let player = null;
 let procs = [];
@@ -38,6 +39,7 @@ export function prefetch(lessonId, url) {
     prefetching.delete(lessonId);
     if (!ok) { try { unlinkSync(cachePath(lessonId)); } catch {} }
     console.log(`[streamer] prefetch lesson ${lessonId}: ${ok ? 'cached' : 'failed (will stream live)'}`);
+    if (ok) pruneAudioCache({ keepLessonIds: [lessonId] }); // stay inside the disk budget
   };
   ffmpeg.on('close', code => done(code === 0));
   ytdlp.stdout.pipe(ffmpeg.stdin);

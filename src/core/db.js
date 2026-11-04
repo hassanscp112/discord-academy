@@ -38,6 +38,15 @@ const DEFAULT_SETTINGS = {
 
 let db = null;
 
+// Close the singleton (WAL folded back into the main file). The next getDb() reopens —
+// used by the dashboard's database restore to swap the file under a running bot.
+export function closeDb() {
+  if (!db) return;
+  try { db.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch {}
+  db.close();
+  db = null;
+}
+
 export function getDb(path = config.dbPath) {
   if (db) return db;
   mkdirSync(dirname(path), { recursive: true });

@@ -3,7 +3,7 @@
 //   live -> missed_poll (T+15m, attendees == 0) -> auto-move 24h after the poll
 import { ButtonBuilder, ButtonStyle, ActionRowBuilder } from 'discord.js';
 import * as A from '../core/academy.js';
-import { getDb, getSetting } from '../core/db.js';
+import { getDb, getSetting, setSetting } from '../core/db.js';
 import { nextSlots, fmtInTz, humanDuration } from '../core/time.js';
 import { config } from '../core/config.js';
 import { templates } from '../core/templates.js';
@@ -66,6 +66,25 @@ function resumeIfSilent(client, s, lesson, now) {
   if (leftSec < 60) return; // class is all but over — let it finish normally
   console.log(`[sessions] live class ${s.id} has no audio — resuming at +${Math.round(intoClassSec / 60)} min`);
   startStream(client, { ...opts, offsetSec: opts.offsetSec + intoClassSec, sessionLenSec: leftSec });
+}
+
+// A live class that stays silent for 2.5 min (YouTube block, missing cookies…) DMs the
+// owner once — otherwise nobody notices until members complain. Paused counts as fine.
+const silentSince = new Map(); // sessionId -> ms when audio was first seen missing
+const audioAlerted = new Set();
+function watchAudio(bus, s, lesson, now) {
+  if (!lesson.url) return;
+  const st = playerState();
+  if (st.live && (st.streaming || st.paused || st.buffering)) { silentSince.delete(s.id); return; }
+  if (!silentSince.has(s.id)) silentSince.set(s.id, now.getTime());
+  if (now - silentSince.get(s.id) < 150000 || audioAlerted.has(s.id)) return;
+  audioAlerted.add(s.id);
+  setSetting('audio_problem_last', JSON.stringify({ at: now.toISOString(), lesson: lesson.title }));
+  bus.bossDm({
+    content: `🔇 **الحصة بلا صوت** — ${lesson.title}\n` +
+      'لم يبدأ الصوت منذ دقيقتين ونصف. السبب غالباً حظر يوتيوب للخادم: ارفع ملف cookies.txt جديداً من ' +
+      'لوحة التحكم ← الإعدادات ← النظام، ثم أنهِ الحصة وابدأها من جديد.',
+  }).catch(() => {});
 }
 
 function streamOpts(session, lesson) {
@@ -161,7 +180,10 @@ export async function tick({ client = null, bus, now = new Date() } = {}) {
         await finishSession({ client, bus, sessionId: s.id });
         continue;
       }
-      if (now < endT && client) resumeIfSilent(client, s, lesson, now);
+      if (now < endT && client) {
+        resumeIfSilent(client, s, lesson, now);
+        watchAudio(bus, s, lesson, now);
+      }
       if (att.length === 0 && now >= t.getTime() + missMin * 60000 && !s.proposed_at) {
         stopStream();
         const slot = proposeSlot(t, s);

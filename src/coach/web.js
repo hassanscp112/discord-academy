@@ -14,7 +14,11 @@ import { applyPublish, currentRevision } from './publish.js';
 import { refreshDashboard, markDashboardDirty } from './dashboard.js';
 import { stopStream, playerState, controlPlayer } from './streamer.js';
 import { fetchPlaylist, fetchVideoMeta } from './importer.js';
-import { publishBook, unpublishBook } from './library.js';
+import { publishBook, unpublishBook, syncLibrary } from './library.js';
+import { systemStatus, saveCookies, restoreDatabase, makeBackup } from './maintenance.js';
+import { markAllMembersDirty } from './memberdash.js';
+import { syncCourseCards } from './coursereg.js';
+import { refreshAcademyDashboard } from './acadashboard.js';
 import { startSessionNow, finishSession } from './sessions.js';
 import { templates } from '../core/templates.js';
 
@@ -441,6 +445,35 @@ export function startWeb({ client = null, bus }) {
   app.post('/api/dash/settings', dashAuth, (req, res) => {
     for (const [k, v] of Object.entries(req.body ?? {})) if (ALLOWED_SETTINGS.includes(k) && v !== '') setSetting(k, v);
     ok(res, 'حُفظت الإعدادات ✓');
+  });
+
+  // ---------- system: backups, restore, cookies (no SFTP needed on container hosts) ----------
+  app.get('/api/dash/system', dashAuth, (_req, res) => res.json(systemStatus()));
+  app.post('/api/dash/system/cookies', dashAuth, express.text({ type: '*/*', limit: '2mb' }), (req, res) => {
+    const r = saveCookies(typeof req.body === 'string' ? req.body : '');
+    if (!r.ok) return res.status(400).json({ error: r.error });
+    res.json({ ok: true, message: `حُفظ ملف الكوكيز (${r.count} سطراً) — يُستخدم من الحصة القادمة ✓` });
+  });
+  app.post('/api/dash/system/restore', dashAuth, express.raw({ type: '*/*', limit: '80mb' }), async (req, res) => {
+    if (A.listSessions({ future: true }).some(s => s.status === 'live')) {
+      return res.status(409).json({ error: 'توجد حصة مباشرة — أنهِها قبل استعادة قاعدة البيانات.' });
+    }
+    const r = restoreDatabase(Buffer.isBuffer(req.body) ? req.body : null);
+    if (!r.ok) return res.status(400).json({ error: r.error });
+    // the restored data has its own courses/members — redraw everything from it
+    markAllMembersDirty();
+    if (client?.isReady?.()) {
+      syncCourseCards(client).catch(e => console.log('[web] restore: course cards', e.message));
+      syncLibrary(client).catch(e => console.log('[web] restore: library', e.message));
+      refreshAcademyDashboard(client, { force: true }).catch(() => {});
+    }
+    res.json({ ok: true, message: `استُعيدت قاعدة البيانات: ${r.lessons} درس · ${r.members} عضو ✓ (النسخة السابقة محفوظة)` });
+  });
+  app.get('/api/dash/system/backup', dashAuth, (_req, res) => {
+    try {
+      const path = makeBackup(`manual-${new Date().toISOString().slice(0, 10)}`);
+      res.download(path, `academy-${new Date().toISOString().slice(0, 10)}.db`);
+    } catch (e) { res.status(500).json({ error: `تعذّر إنشاء النسخة: ${e.message}` }); }
   });
 
   app.post('/api/dash/action/start', dashAuth, async (req, res) => {

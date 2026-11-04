@@ -6,6 +6,11 @@ process.env.TZ = 'UTC';
 process.env.COACH_DISABLE_DISCORD = '1';
 process.env.DASH_PASSWORD = 'test';
 process.env.API_TOKEN = 'test-token';
+// file-touching code (cache trim, backups, cookies) gets its own throwaway folders —
+// never the real data/cache, data/backups or data/cookies.txt
+process.env.AUDIO_CACHE_DIR = './data/test-cache';
+process.env.BACKUP_DIR = './data/test-backups';
+process.env.YTDLP_COOKIES = './data/test-cookies.txt';
 
 const { setSetting } = await import('../src/core/db.js');
 const T = await import('../src/core/time.js');
@@ -333,6 +338,48 @@ console.log('\n— publish API —');
   const pubQ = A.listQuests().find(x => x.title === 'Pub quest');
   ok(!!pubQ, 'quest created via publish');
   eq(pubQ.category, 'course', 'published quest carries its category');
+}
+
+console.log('\n— maintenance: cookies, backup/restore, cache budget —');
+{
+  const M = await import('../src/coach/maintenance.js');
+  const fs = await import('node:fs');
+  for (const d of ['data/test-cache', 'data/test-backups']) fs.rmSync(d, { recursive: true, force: true });
+
+  eq(M.saveCookies('hello world').ok, false, 'random text rejected as cookies');
+  eq(M.saveCookies('.example.com\tTRUE\t/\tFALSE\t0\tk\tv').ok, false, 'cookies without YouTube rejected');
+  const good = M.saveCookies('# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t1999999999\tSID\tabc');
+  ok(good.ok && good.count === 1, 'YouTube Netscape cookies accepted');
+  ok(fs.existsSync('data/test-cookies.txt'), 'cookies written to the configured path');
+  fs.rmSync('data/test-cookies.txt', { force: true });
+
+  const lessonsBefore = A.listLessons().length;
+  const backup = M.makeBackup('test-roundtrip');
+  ok(fs.existsSync(backup), 'backup file written');
+  ok(M.listBackups().some(b => backup.endsWith(b.name)), 'backup listed');
+  A.addLesson({ title: 'Added after backup', url: '', durationMin: 10 });
+  eq(A.listLessons().length, lessonsBefore + 1, 'lesson added after the backup');
+
+  eq(M.restoreDatabase(Buffer.from('not a database')).ok, false, 'non-SQLite upload rejected');
+  const r = M.restoreDatabase(fs.readFileSync(backup));
+  ok(r.ok, `restore accepted (${r.error ?? `${r.lessons} lessons`})`);
+  eq(A.listLessons().length, lessonsBefore, 'restore rolled the data back to the backup');
+  ok(r.safety && fs.existsSync(r.safety), 'pre-restore safety copy kept');
+
+  // cache budget: 0 MB budget removes unscheduled files, keeps protected ones
+  fs.mkdirSync('data/test-cache', { recursive: true });
+  fs.writeFileSync('data/test-cache/lesson-999001.opus', Buffer.alloc(2048));
+  fs.writeFileSync('data/test-cache/lesson-999002.opus', Buffer.alloc(2048));
+  setSetting('cache_max_mb', '0');
+  M.pruneAudioCache({ keepLessonIds: [999002] });
+  ok(!fs.existsSync('data/test-cache/lesson-999001.opus'), 'over budget: unscheduled cache file removed');
+  ok(fs.existsSync('data/test-cache/lesson-999002.opus'), 'protected (playing) cache file kept');
+  fs.rmSync('data/test-cache/lesson-999002.opus', { force: true });
+  setSetting('cache_max_mb', '600');
+
+  const st = M.systemStatus();
+  ok(typeof st.cacheMb === 'number' && st.database.sizeMb > 0, 'system status reports cache + db size');
+  for (const d of ['data/test-cache', 'data/test-backups']) fs.rmSync(d, { recursive: true, force: true });
 }
 
 console.log(`\n═══ RESULT: ${pass} passed, ${fail} failed ═══`);
