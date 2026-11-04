@@ -45,7 +45,7 @@ function activeLiveSession() {
 }
 
 if (client) {
-  client.once('ready', async () => {
+  client.once('clientReady', async () => {
     log(`logged in as ${client.user.tag}`);
     client.user.setActivity('الأكاديمية 🎓', { type: ActivityType.Watching });
     // optional Lavalink audio node (AUDIO_BACKEND=lavalink); ffmpeg covers any gap

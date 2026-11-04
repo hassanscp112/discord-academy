@@ -8,7 +8,7 @@ import { nextSlots, fmtInTz, humanDuration } from '../core/time.js';
 import { config } from '../core/config.js';
 import { templates } from '../core/templates.js';
 import { refreshDashboard, markDashboardDirty } from './dashboard.js';
-import { startStream, stopStream, prefetch } from './streamer.js';
+import { startStream, stopStream, prefetch, playerState } from './streamer.js';
 import { markMemberDirty, refreshMemberDashboards } from './memberdash.js';
 import { refreshAcademyDashboard } from './acadashboard.js';
 
@@ -38,17 +38,34 @@ async function postQuestion(bus, q) {
   });
 }
 
-const fmtDur = sec => {
-  const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
-  return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`;
+// video position as a clock: 75 min -> "1:15:00", 9 min -> "9:00"
+const clock = min => {
+  const h = Math.floor(min / 60), m = Math.round(min % 60);
+  return h ? `${h}:${String(m).padStart(2, '0')}:00` : `${m}:00`;
 };
 
-// "⏱️ Part 2 of 3 — starts at 1h 00m" for multi-part lessons, '' otherwise
+// "⏱️ الجزء 2 من 3 — من 1:00:00 إلى 2:00:00" for multi-part lessons, '' otherwise
 function partLine(session) {
   const info = A.sessionPartInfo(session);
   if (info.parts < 2) return '';
-  const range = info.toMin != null ? ` (until ${fmtDur(info.toMin * 60)})` : '';
-  return `\n⏱️ Part ${info.part} of ${info.parts} — starts at ${fmtDur(info.fromMin * 60)}${range}`;
+  const range = info.toMin != null ? ` إلى ${clock(info.toMin)}` : '';
+  return `\n⏱️ الجزء ${info.part} من ${info.parts} — من ${clock(info.fromMin)}${range}`;
+}
+
+// A restart mid-class (bot-hosting.net restarts pull new code) leaves the session
+// 'live' with nothing playing — rejoin and continue from where the class should be.
+// Retried at most every 2 min so a failing yt-dlp doesn't respawn every tick.
+const resumeTried = new Map(); // sessionId -> last attempt ms
+function resumeIfSilent(client, s, lesson, now) {
+  if (!lesson.url || playerState().live) return;
+  if (now - (resumeTried.get(s.id) ?? 0) < 120000) return;
+  resumeTried.set(s.id, now.getTime());
+  const intoClassSec = Math.max(0, (now - new Date(s.scheduled_at)) / 1000);
+  const opts = streamOpts(s, lesson);
+  const leftSec = opts.sessionLenSec - intoClassSec;
+  if (leftSec < 60) return; // class is all but over — let it finish normally
+  console.log(`[sessions] live class ${s.id} has no audio — resuming at +${Math.round(intoClassSec / 60)} min`);
+  startStream(client, { ...opts, offsetSec: opts.offsetSec + intoClassSec, sessionLenSec: leftSec });
 }
 
 function streamOpts(session, lesson) {
@@ -111,6 +128,19 @@ export async function tick({ client = null, bus, now = new Date() } = {}) {
     // With several courses, cadences can collide: never start a second class
     // while one is live — the tick retries once the other finishes.
     if ((s.status === 'scheduled' || s.status === 'reminded') && now >= t) {
+      // bot was offline through the whole class: don't announce a class that's already
+      // over — go straight to the missed poll so it gets moved
+      if (now >= endT) {
+        const slot = proposeSlot(t, s);
+        run("UPDATE sessions SET status = 'missed_poll', proposed_at = ?, poll_at = ? WHERE id = ?",
+          slot.toISOString(), now.toISOString(), s.id);
+        await bus.postTo('channel_dashboard', {
+          content: fill(templates.missed, { ...vars, proposed_when: fmtInTz(slot, config.tz) }),
+          components: [sessRow(s)],
+        });
+        markDashboardDirty();
+        continue;
+      }
       if (A.listSessions({ future: true }).some(x => x.status === 'live' && x.id !== s.id)) continue;
       const msg = await bus.postTo('channel_dashboard', {
         content: fill(templates.starting, vars),
@@ -131,6 +161,7 @@ export async function tick({ client = null, bus, now = new Date() } = {}) {
         await finishSession({ client, bus, sessionId: s.id });
         continue;
       }
+      if (now < endT && client) resumeIfSilent(client, s, lesson, now);
       if (att.length === 0 && now >= t.getTime() + missMin * 60000 && !s.proposed_at) {
         stopStream();
         const slot = proposeSlot(t, s);
@@ -168,9 +199,9 @@ export async function tick({ client = null, bus, now = new Date() } = {}) {
 // and fire the starting transition immediately.
 export async function startSessionNow({ client = null, bus, lessonId, now = new Date() } = {}) {
   const lesson = A.getLesson(lessonId);
-  if (!lesson) return { ok: false, error: 'Lesson not found.' };
+  if (!lesson) return { ok: false, error: 'الدرس غير موجود.' };
   if (A.listSessions({ future: true }).some(s => s.status === 'live')) {
-    return { ok: false, error: 'A class is already live — finish it first.' };
+    return { ok: false, error: 'توجد حصة مباشرة الآن — أنهِها أولاً.' };
   }
   let s = A.sessionForLesson(lessonId);
   let offsetMin = 0;
@@ -227,8 +258,8 @@ export async function finishSession({ client, bus, sessionId }) {
     const base = Number(getSetting('xp_attendance', '20'));
     const bonus = Math.min(a.streak * Number(getSetting('xp_streak_bonus', '10')), Number(getSetting('xp_streak_bonus_cap', '50')));
     A.awardXp(a.userId, base + bonus, 'attendance');
-    markMemberDirty(a.userId); // XP changed -> their private dashboard updates
-      }
+    markMemberDirty(a.userId); // streak/attendance changed -> their private dashboard updates
+  }
   markDashboardDirty();
   await refreshDashboard(client, { force: true });
   return res;

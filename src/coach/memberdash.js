@@ -253,7 +253,7 @@ export function buildMemberView(userId, view = 'overview') {
       const cp = A.courseProgress(c.id, userId);
       embed.addFields({
         name: `📖 ${c.title}`,
-        value: `\`${bar(cp.done, cp.total)}\` **${cp.done}/${cp.total}**\n${cp.next ? `**التالي:** ${cp.next.title}` : '🎉 أكملتها كاملة'}`.slice(0, 1024),
+        value: `\`${bar(cp.done, cp.total)}\` **${cp.done}/${cp.total}**\n${!cp.total ? 'لا دروس في هذه الدورة بعد' : cp.next ? `**التالي:** ${cp.next.title}` : '🎉 أكملتها كاملة'}`.slice(0, 1024),
         inline: false,
       });
     }
@@ -326,7 +326,7 @@ function viewCardHTML(userId, view) {
     return listCardHTML({
       icon: '📖', title: 'دوراتي', subtitle: `${d.lessonsDone}/${d.lessonsTotal} درساً`,
       rows: d.courses.map(c => ({
-        t: c.title, sub: c.next ? 'التالي: ' + c.next : 'مكتملة 🎉',
+        t: c.title, sub: !c.total ? 'لا دروس بعد' : c.next ? 'التالي: ' + c.next : 'مكتملة 🎉',
         done: c.done, total: c.total, right: `${c.done}/${c.total}`,
       })),
     });
@@ -470,8 +470,9 @@ export async function postOnboarding(client) {
   if (!existing) existing = [...(await ch.messages.fetch({ limit: 30 })).values()].find(isOnboarding);
   const buf = await renderCard(onboardingCardHTML());
   const payload = buf
-    ? { files: [new AttachmentBuilder(buf, { name: 'onboarding.png' })] }
-    : { content: '🎓 أهلاً بك في الأكاديمية — احضر أول حصة لتظهر لوحتك الخاصة.' };
+    // attachments: [] replaces the previous image on edit — without it every boot stacked another copy
+    ? { content: '', files: [new AttachmentBuilder(buf, { name: 'onboarding.jpg' })], attachments: [] }
+    : { content: '🎓 أهلاً بك في الأكاديمية — احضر أول حصة لتظهر لوحتك الخاصة.', attachments: [] };
   payload.components = [new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('onboard:me').setLabel('📊 افتح لوحتي').setStyle(ButtonStyle.Primary),
   )];

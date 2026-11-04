@@ -137,7 +137,7 @@ export function importPlaylist(entries, { durationMin = 60, courseId = null } = 
 // first course (Discord /schedule + AI publish still land here).
 export function setTemplate(tpl) {
   const norm = normalizeTemplate(tpl);
-  if (!norm) throw new Error('Invalid schedule template.');
+  if (!norm) throw new Error('إيقاع الجدول غير صالح.');
   setSetting('weekly_template_json', JSON.stringify(norm));
   const first = getDb().prepare('SELECT MIN(id) AS id FROM courses').get().id;
   if (first != null) updateCourse(first, norm);
@@ -183,7 +183,7 @@ export function nextOffsetForLesson(lessonId) {
 // slots, each continuing the video where the previous one stopped.
 export function generateScheduleForCourse(courseId, { count = null, from = new Date() } = {}) {
   const course = getCourse(courseId);
-  if (!course) throw new Error('Course not found.');
+  if (!course) throw new Error('الدورة غير موجودة.');
   if (!course.template) throw new Error('هذه الدورة بلا إيقاع — اختر الأيام/التكرار والوقت أولاً.');
   const planned = listLessons(courseId)
     .filter(l => l.status !== 'done' && l.status !== 'skipped')
@@ -227,11 +227,11 @@ export function setSession(sessionId, isoDate) {
 export function pushToNextSlot(sessionId, after = new Date()) {
   const session = getSession(sessionId);
   const course = session ? courseOfLesson(session.lesson_id) : null;
-  if (!course?.template) throw new Error('The course has no cadence set.');
+  if (!course?.template) throw new Error('لم يُضبط إيقاع لهذه الدورة بعد.');
   const slots = nextSlots(course.template, after, 4, getSetting('tz') || config.tz);
   const used = new Set(listSessions({ future: true }).map(s => s.scheduled_at));
   const slot = slots.find(s => !used.has(s.toISOString())) ?? slots[0];
-  if (!slot) throw new Error('No free slot found in the next weeks.');
+  if (!slot) throw new Error('لا يوجد موعد فارغ في الأسابيع القادمة.');
   setSession(sessionId, slot.toISOString());
   return slot;
 }

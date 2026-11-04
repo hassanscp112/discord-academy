@@ -444,7 +444,7 @@ export async function handleButton(interaction) {
     if (r.correct) {
         A.awardXp(interaction.user.id, r.question.xp, 'quiz');
       markMemberDirty(interaction.user.id);
-        return interaction.reply({ content: `✅ إجابة صحيحة! +${r.question.xp} نقطة`, ephemeral: true });
+        return interaction.reply({ content: '✅ إجابة صحيحة — أحسنت!', ephemeral: true });
     }
     return interaction.reply({ content: '❌ ليست الإجابة الصحيحة — راجع الدرس وحاول التركيز في الحصة القادمة!', ephemeral: true });
   }

@@ -25,7 +25,7 @@ const entryUrl = e => e.url || (e.id ? `https://www.youtube.com/watch?v=${e.id}`
 export async function fetchPlaylist(url) {
   const raw = await runYtdlp(['--flat-playlist', '--no-warnings', ...cookieArgs(), '-J', url], 120000);
   let j;
-  try { j = JSON.parse(raw); } catch { throw new Error('yt-dlp returned unreadable metadata'); }
+  try { j = JSON.parse(raw); } catch { throw new Error('تعذّرت قراءة بيانات الفيديو من يوتيوب'); }
   const rawEntries = j.entries?.length ? j.entries : (j.id ? [j] : []); // single video URL also works
   const entries = rawEntries.map(e => ({
     videoId: e.id ?? null,
@@ -33,7 +33,7 @@ export async function fetchPlaylist(url) {
     durationSec: Number.isFinite(e.duration) ? Math.round(e.duration) : null,
     url: entryUrl(e),
   })).filter(e => e.url);
-  if (!entries.length) throw new Error('no videos found at that link');
+  if (!entries.length) throw new Error('لا توجد فيديوهات في هذا الرابط');
   return { title: j.title ?? null, count: j.playlist_count ?? entries.length, entries };
 }
 

@@ -33,7 +33,7 @@ const planner = createPlanner({
 function startDiscord() {
   if (!config.aiToken) { log('AI_TOKEN not set — Discord presence disabled (studio still works).'); return; }
   const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
-  client.once('ready', () => log(`logged in as ${client.user.tag} (admin presence on)`));
+  client.once('clientReady', () => log(`logged in as ${client.user.tag} (admin presence on)`));
   client.on('messageCreate', async (m) => {
     if (m.author.bot) return;
     if (!config.bossIds.includes(m.author.id)) return;

@@ -152,6 +152,17 @@ console.log('\n— session state machine (tick) —');
   eq(s.status, 'scheduled', 'poll expiry auto-moved session');
   eq(s.scheduled_at, proposed, 'moved to the proposed slot');
 
+  // bot was offline through the whole class: no "starting" post, straight to the missed poll
+  A.cancelSession(ns.id);
+  const posts = [];
+  const rec = { ...bus, postTo: async (k, p) => { posts.push(p.content); return { id: 'm' + posts.length }; } };
+  const r3 = getDb().prepare("INSERT INTO sessions (lesson_id, scheduled_at, status) VALUES (?, ?, 'reminded')")
+    .run(intro.id, new Date(Date.now() - 5 * 3600000).toISOString());
+  await S.tick({ client: null, bus: rec, now: new Date() });
+  eq(A.getSession(Number(r3.lastInsertRowid)).status, 'missed_poll', 'class already over at boot -> missed_poll, not live');
+  ok(!posts.some(c => c?.includes('تبدأ الآن')), 'no "class starting now" announcement for a class that already ended');
+  A.cancelSession(Number(r3.lastInsertRowid));
+
   // attended session flow: a fresh controlled session for the next lesson
   const advanced = A.listLessons().find(l => l.title === 'Advanced');
   const r2 = getDb().prepare("INSERT INTO sessions (lesson_id, scheduled_at, status) VALUES (?, ?, 'live')")
