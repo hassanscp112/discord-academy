@@ -309,6 +309,36 @@ console.log('\n— subscriptions, questions, member management —');
   A.removeBook(A.findBookByTitle('كتاب مؤقت').id);
 }
 
+console.log('\n— interaction handlers (fake Discord) —');
+{
+  const C = await import('../src/coach/commands.js');
+  const fake = (extra = {}) => {
+    const sent = [];
+    return {
+      sent, user: { id: 'user_btn', username: 'btn' }, member: null, client: {}, channelId: 'chan_x',
+      reply: async p => { sent.push(p); }, update: async p => { sent.push(p); }, followUp: async p => { sent.push(p); },
+      deferReply: async () => {}, deferUpdate: async () => {}, editReply: async p => { sent.push(p); },
+      ...extra,
+    };
+  };
+  eq(C.commandDefs.length, 10, 'barrel re-exports the 10 command definitions');
+  const lesson = A.listLessons()[0];
+  const b1 = fake({ customId: `complete:${lesson.id}` }); // two-segment: id must be read from `action`
+  await C.handleButton(b1);
+  ok(/سُجّل إنجاز/.test(b1.sent[0]?.content ?? ''), 'complete:<id> records the lesson (bug #1 stays fixed)');
+  ok(!/XP|undefined|NaN/.test(b1.sent[0]?.content ?? ''), 'completion reply has no XP / undefined / NaN');
+  const b2 = fake({ customId: `complete:${lesson.id}` });
+  await C.handleButton(b2);
+  ok(/من قبل/.test(b2.sent[0]?.content ?? ''), 'second press says it was already recorded');
+  const b3 = fake({ customId: 'nonsense:1' });
+  await C.handleButton(b3);
+  eq(b3.sent[0]?.content, 'زر غير معروف.', 'unknown button gets the Arabic fallback');
+  const c1 = fake({ commandName: 'lesson', options: { getSubcommand: () => 'list' } });
+  await C.handleCommand(c1);
+  ok((c1.sent[0]?.embeds?.[0]?.data?.title ?? '') === '📚 الدروس', '/lesson list answers in Arabic');
+  A.removeMember('user_btn');
+}
+
 console.log('\n— member engagement (dashboard) —');
 {
   const db = getDb();
