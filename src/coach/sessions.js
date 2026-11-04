@@ -9,7 +9,7 @@ import { config } from '../core/config.js';
 import { templates } from '../core/templates.js';
 import { refreshDashboard, markDashboardDirty } from './dashboard.js';
 import { startStream, stopStream, prefetch, playerState } from './streamer.js';
-import { markMemberDirty, refreshMemberDashboards } from './memberdash.js';
+import { markMemberDirty, refreshMemberDashboards, postClassSummary } from './memberdash.js';
 import { refreshAcademyDashboard } from './acadashboard.js';
 
 const run = (sql, ...p) => getDb().prepare(sql).run(...p);
@@ -298,6 +298,10 @@ export async function finishSession({ client, bus, sessionId }) {
     const bonus = Math.min(a.streak * Number(getSetting('xp_streak_bonus', '10')), Number(getSetting('xp_streak_bonus_cap', '50')));
     A.awardXp(a.userId, base + bonus, 'attendance');
     markMemberDirty(a.userId); // streak/attendance changed -> their private dashboard updates
+    await postClassSummary(client, {
+      userId: a.userId, lessonId: res.session.lesson_id, minutes: a.minutes, streak: a.streak,
+      partLine: partLine(res.session),
+    }).catch(e => console.log('[sessions] class summary:', e.message));
   }
   markDashboardDirty();
   await refreshDashboard(client, { force: true });

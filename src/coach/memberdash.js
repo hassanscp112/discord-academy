@@ -10,7 +10,7 @@ import * as A from '../core/academy.js';
 import { getDb, getSetting } from '../core/db.js';
 import { fmtInTz, humanDuration } from '../core/time.js';
 import { config } from '../core/config.js';
-import { renderCard, memberCardHTML, listCardHTML, onboardingCardHTML } from './card.js';
+import { renderCard, memberCardHTML, listCardHTML, onboardingCardHTML, classDoneCardHTML } from './card.js';
 
 const MARK = 'ACADEMY_MEMBER_DASH_V1';
 const CATEGORY_NAME = '📊 تقدم الأعضاء';
@@ -433,6 +433,33 @@ async function refreshOne(client, userId) {
     console.log(`[memberdash] refresh failed for ${userId}:`, e.message);
     cachedMessages.delete(userId);
   }
+}
+
+// After class: a "you attended" card in the member's own channel. The «أنهيت» button only
+// appears once the whole lesson is done (a 3-part lesson isn't finished after part 1).
+export async function postClassSummary(client, { userId, lessonId, minutes, streak, partLine = '' }) {
+  if (!client?.isReady?.()) return;
+  const p = A.getParticipant(userId);
+  const lesson = A.getLesson(lessonId);
+  if (!p || !lesson) return;
+  const ch = await ensureMemberChannel(client, p);
+  if (!ch) return;
+  const course = lesson.course_id ? A.getCourse(lesson.course_id) : null;
+  const cp = course ? A.courseProgress(course.id, userId) : null;
+  const lessonDone = lesson.status === 'done';
+  const already = A.listProgress(userId).some(x => x.lesson_id === lesson.id);
+  const components = lessonDone && !already ? [new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`complete:${lesson.id}`).setLabel('✅ أنهيت هذا الدرس').setStyle(ButtonStyle.Success))] : [];
+  try {
+    const buf = await renderCard(classDoneCardHTML({
+      name: p.display_name, lesson: lesson.title, partLine: partLine.replace(/^\n/, ''),
+      minutes, streak, lessonDone,
+      course: cp ? { title: course.title, done: cp.done, total: cp.total } : null,
+    }));
+    await ch.send(buf
+      ? { files: [new AttachmentBuilder(buf, { name: 'class.jpg' })], components }
+      : { content: `✅ **حضرت الحصة** — ${lesson.title}\n⏱️ ${minutes} دقيقة · 🔥 سلسلة ${streak}`, components });
+  } catch (e) { console.log(`[memberdash] class summary for ${userId} failed:`, e.message); }
 }
 
 // Sweep dirty members — called from the 20s tick; throttled to once a minute.

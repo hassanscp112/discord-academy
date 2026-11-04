@@ -14,6 +14,7 @@ import { templates } from '../core/templates.js';
 import { finishSession, proposeSlot } from './sessions.js';
 import { markMemberDirty, memberDashPayload } from './memberdash.js';
 import { stopStream } from './streamer.js';
+import { createBus } from './bus.js';
 import { refreshDashboard, markDashboardDirty } from './dashboard.js';
 
 export const commandDefs = [
@@ -302,7 +303,13 @@ export async function handleButton(interaction) {
     markMemberDirty(interaction.user.id);
     markDashboardDirty();
     await refreshDashboard(interaction.client, { force: true });
-    return interaction.reply({ content: `🎉 سُجّل إنجاز **${lesson.title}** — بارك الله فيك!`, ephemeral: true });
+    const done = { content: `🎉 سُجّل إنجاز **${lesson.title}** — بارك الله فيك!`, ephemeral: true };
+    // on the member's own "you attended" card the button has served its purpose — remove it
+    if (interaction.channelId && interaction.channelId === A.getParticipant(interaction.user.id)?.private_channel_id) {
+      await interaction.update({ components: [] });
+      return interaction.followUp(done);
+    }
+    return interaction.reply(done);
   }
 
   if (kind === 'quest') {
@@ -357,8 +364,9 @@ export async function handleButton(interaction) {
     }
     if (action === 'finish') {
       if (!boss && !isAdmin(interaction)) return interaction.reply({ content: 'إنهاء الحصة لمشرف الأكاديمية فقط.', ephemeral: true });
-      await interaction.deferReply();
-      await finishSession({ client: interaction.client, bus: null, sessionId: id });
+      await interaction.deferReply({ ephemeral: true }); // the public «انتهت الحصة» post is enough
+      // bus: null crashed at the first post — no «انتهت الحصة», no quiz when finished from Discord
+      await finishSession({ client: interaction.client, bus: createBus(interaction.client), sessionId: id });
       return interaction.editReply({ content: '✅ انتهت الحصة وسُجّل حضور الحاضرين.' });
     }
   }

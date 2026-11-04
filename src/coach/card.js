@@ -179,6 +179,31 @@ export function bookCardHTML(book) {
   `);
 }
 
+// ---------- "you attended" card, posted in the member's private channel after class ----------
+// d: { name, lesson, partLine, minutes, streak, course: { title, done, total } | null, lessonDone }
+export function classDoneCardHTML(d) {
+  const c = d.course;
+  return page(`
+  <div class="top">
+    <div class="who"><img class="hlogo" src="${EMBLEM}" alt=""><div class="name">✅ حضرت الحصة</div></div>
+    <div class="pills"><span class="pill">🔥 سلسلة ${d.streak}</span></div>
+  </div>
+  <div class="body">
+    <div style="font-size:20px;font-weight:800;margin-bottom:4px">${esc(d.lesson)}</div>
+    ${d.partLine ? `<div class="dim" style="color:#59687F;font-size:14px">${esc(d.partLine)}</div>` : ''}
+    <div class="stats" style="margin-top:16px">
+      <div class="stat"><div class="v">${d.minutes}</div><div class="l">دقيقة حضور</div></div>
+      <div class="stat"><div class="v">${d.streak}</div><div class="l">حصص متتالية</div></div>
+      ${c ? `<div class="stat"><div class="v">${c.done}/${c.total}</div><div class="l">${esc(c.title)}</div></div>` : ''}
+    </div>
+    <div class="next" style="margin-top:18px"><b>${d.lessonDone
+      ? 'اكتمل هذا الدرس — علّمه بالزر أدناه لتحديث تقدّمك'
+      : 'يُستكمل الدرس في الحصة القادمة — نراك هناك'}</b><span class="w">بارك الله فيك</span></div>
+    <div class="foot">هُدَى · «من سلك طريقًا يلتمس فيه علمًا سهّل الله له به طريقًا إلى الجنة»</div>
+  </div>
+  `);
+}
+
 // ---------- onboarding guide card ----------
 export function onboardingCardHTML() {
   const step = (n, t, d) => `
