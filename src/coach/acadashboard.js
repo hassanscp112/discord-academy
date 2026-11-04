@@ -63,6 +63,10 @@ function cardData() {
       title: c.title, done: c.lessons_done, total: c.lessons_total,
       next: c.next_session ? `${fmtInTz(new Date(c.next_session.scheduled_at), config.tz)}` : null,
     })),
+    nextSession: o.next_session ? {
+      title: A.getLesson(o.next_session.lesson_id)?.title ?? '—',
+      when: fmtInTz(new Date(o.next_session.scheduled_at), config.tz),
+    } : null,
     lessonsDone: o.lessons_done, lessonsTotal: o.lessons_total,
     booksRead: bs.finished ?? bs.finished_books ?? 0,
     booksTotal: bs.total ?? bs.books ?? 0,

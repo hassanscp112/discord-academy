@@ -150,7 +150,7 @@ export function memberCardHTML(d) {
   <div class="top">
     <div class="who"><img class="hlogo" src="${EMBLEM}" alt=""><div class="name">${esc(d.name)}</div></div>
     <div class="pills">
-      <span class="pill ghost">🔥 ${d.streak}</span>
+      <span class="pill ghost">🔥 سلسلة ${d.streak}</span>
     </div>
   </div>
   <div class="body">
@@ -160,7 +160,7 @@ export function memberCardHTML(d) {
   </div>
   ${courses ? `<div class="sec"><h3>📖 الدورات</h3>${courses}</div>` : ''}
   ${books ? `<div class="sec"><h3>📚 الكتب</h3>${books}</div>` : ''}
-  ${d.nextSession ? `<div class="next"><b>${esc(d.nextSession.title)}</b><span class="w">⏰ ${esc(d.nextSession.when)}</span></div>` : ''}
+  ${d.nextSession ? nextBox(d.nextSession) : ''}
   <div class="foot">هُدَى · لوحة تقدمك — تتحدث تلقائيًا بعد كل إنجاز</div>
   </div>
   `);
@@ -171,7 +171,7 @@ export function bookCardHTML(book) {
   return page(`
   <div class="top">
     <div class="who"><img class="hlogo" src="${EMBLEM}" alt=""><div class="name">📖 ${esc(book.title)}</div></div>
-    <div class="pills"><span class="pill">${book.total_pages} صفحة</span></div>
+    <div class="pills">${book.genre ? `<span class="pill ghost">${esc(book.genre)}</span>` : ''}<span class="pill">${book.total_pages} صفحة</span>${book.pdf_msg_id ? '<span class="pill ghost">⬇️ PDF</span>' : ''}</div>
   </div>
   <div class="body" style="padding:20px 32px 24px">
     <div style="color:#59687F;font-size:14.5px;line-height:1.7">من مكتبة الأكاديمية — اضغط «📝 سجّل صفحتك» بالأسفل وابدأ تتبع قراءتك، حتى ولو بدأت من الصفحة الأولى. وصولك لآخر صفحة يعني إنهاء الكتاب 🎉</div>
@@ -205,7 +205,7 @@ export function onboardingCardHTML() {
   ${step(5, '❓ أسئلة بعد الحصة',
     'بعد كل حصة قد يظهر سؤال في قناة الإعلانات — أجب عليه لتثبيت ما تعلّمته.')}
   <div class="next"><b>أوامر سريعة</b>
-    <span class="w">/myprogress · /books · /group</span></div>
+    <span class="w" dir="ltr">/myprogress · /books · /group</span></div>
   <div class="foot">ابدأ الآن: ادخل أول حصة وستجد لوحتك جاهزة</div>
   </div>
   `);
@@ -229,8 +229,16 @@ export function listCardHTML({ icon, title, subtitle, rows }) {
 }
 
 // ---------- 📊 academy dashboard card (public board channel) ----------
+// "next class" box shared by the member and hub cards
+const nextBox = ns => `<div class="next"><div><div class="w" style="margin-bottom:3px">⏰ الحصة القادمة</div>
+  <b>${esc(ns.title)}</b></div><span class="w">${esc(ns.when)}</span></div>`;
+
 export function academyCardHTML(d) {
-  const courses = d.courses.slice(0, 5).map(c => barRow(esc(c.title), c.next ? 'التالي: ' + c.next : 'مكتملة 🎉',
+  // a course is complete only when every lesson is done — not merely "nothing scheduled"
+  const courseSub = c => !c.total ? 'لا دروس بعد'
+    : c.done >= c.total ? 'مكتملة 🎉'
+    : c.next ? '🗓️ ' + esc(c.next) : 'لا حصة مجدولة';
+  const courses = d.courses.slice(0, 5).map(c => barRow(esc(c.title), courseSub(c),
     c.done, c.total, `${c.done}/${c.total}`)).join('');
   return page(`
   <div class="top">
@@ -244,7 +252,8 @@ export function academyCardHTML(d) {
     <div class="stat"><div class="v">${d.booksRead}/${d.booksTotal}</div><div class="l">كتابًا قُرئ</div></div>
   </div>
   ${courses ? `<div class="sec"><h3>🎓 الدورات</h3>${courses}</div>` : ''}
-  <div class="foot">تتحدث تلقائيًا بعد كل حدث في الأكاديمية · التسجيل من قناة الإعلانات</div>
+  ${d.nextSession ? nextBox(d.nextSession) : ''}
+  <div class="foot">تتحدث تلقائيًا بعد كل حدث في الأكاديمية · اشترك في دورتك من بطاقتها أدناه</div>
   </div>
   `);
 }

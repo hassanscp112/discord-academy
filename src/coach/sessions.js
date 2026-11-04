@@ -38,6 +38,9 @@ async function postQuestion(bus, q) {
   });
 }
 
+// class start as a Makkah-time clock for reminders: "9:00 م"
+const fmtClock = t => new Intl.DateTimeFormat('ar-SA-u-nu-latn', { timeZone: config.tz, hour: 'numeric', minute: '2-digit' }).format(t);
+
 // video position as a clock: 75 min -> "1:15:00", 9 min -> "9:00"
 const clock = min => {
   const h = Math.floor(min / 60), m = Math.round(min % 60);
@@ -66,6 +69,18 @@ function resumeIfSilent(client, s, lesson, now) {
   if (leftSec < 60) return; // class is all but over — let it finish normally
   console.log(`[sessions] live class ${s.id} has no audio — resuming at +${Math.round(intoClassSec / 60)} min`);
   startStream(client, { ...opts, offsetSec: opts.offsetSec + intoClassSec, sessionLenSec: leftSec });
+}
+
+// Attendance only hears voice *joins* — members already waiting in the room when the
+// class starts would never be counted (and the class could be "missed" with people in it).
+function recordPresent(client, sessionId) {
+  const vc = client?.channels?.cache?.get(getSetting('study_vc'));
+  for (const [id, m] of vc?.members ?? []) {
+    if (m.user?.bot) continue;
+    A.upsertParticipant(id, m.displayName ?? m.user?.username ?? '');
+    A.recordJoin(sessionId, id);
+    markMemberDirty(id);
+  }
 }
 
 // A live class that stays silent for 2.5 min (YouTube block, missing cookies…) DMs the
@@ -138,7 +153,7 @@ export async function tick({ client = null, bus, now = new Date() } = {}) {
     // T-remMin: reminder + warm the audio cache for class time
     if (s.status === 'scheduled' && now >= t.getTime() - remMin * 60000 && now < t) {
       prefetch(s.lesson_id, lesson.url);
-      await bus.postTo('channel_dashboard', { content: fill(templates.reminder, { ...vars, when: humanDuration(t - now) }), components: [new ActionRowBuilder().addComponents(subBtn(lesson))] });
+      await bus.postTo('channel_dashboard', { content: fill(templates.reminder, { ...vars, when: humanDuration(t - now), at: fmtClock(t) }), components: [new ActionRowBuilder().addComponents(subBtn(lesson))] });
       run("UPDATE sessions SET status = 'reminded' WHERE id = ?", s.id);
       continue;
     }
@@ -169,6 +184,7 @@ export async function tick({ client = null, bus, now = new Date() } = {}) {
         )],
       });
       run("UPDATE sessions SET status = 'live', live_post_id = ? WHERE id = ?", msg?.id ?? '', s.id);
+      recordPresent(client, s.id);
       if (lesson.url) startStream(client, streamOpts(s, lesson));
       continue;
     }
@@ -251,6 +267,7 @@ export async function startSessionNow({ client = null, bus, lessonId, now = new 
     )],
   });
   run("UPDATE sessions SET status = 'live', live_post_id = ? WHERE id = ?", msg?.id ?? '', s.id);
+  recordPresent(client, s.id);
   if (lesson.url) startStream(client, streamOpts(s, lesson));
   markDashboardDirty();
   await refreshDashboard(client, { force: true });

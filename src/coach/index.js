@@ -18,6 +18,7 @@ import { refreshAcademyDashboard, ensureVoiceChannel, ensureHubOrder, removeLega
 import { onUploadMessage, ensureUploadChannel, postUploadInstructions } from './uploads.js';
 import { initLavalink } from './lavalink.js';
 import * as A from '../core/academy.js';
+import { templates } from '../core/templates.js';
 
 const log = (...a) => console.log('[coach]', new Date().toISOString(), ...a);
 
@@ -121,7 +122,11 @@ if (client) {
         if (isNew) {
           markMemberDirty(userId); // first-timer: create their private progress channel
           const lesson = A.currentLesson();
-          await bus.dm(userId, { content: lesson ? `Welcome to the academy, ${newS.member?.displayName ?? 'friend'}! 🎓 Current lesson: **${lesson.title}**` : 'Welcome to the academy! 🎓' });
+          await bus.dm(userId, {
+            content: templates.welcome_dm
+              .replace('{{member}}', newS.member?.displayName ?? 'طالب العلم')
+              .replace('{{lesson_title}}', lesson?.title ?? 'أول دروس الدورة'),
+          });
         }
       } else {
       A.recordLeave(s.id, userId);
